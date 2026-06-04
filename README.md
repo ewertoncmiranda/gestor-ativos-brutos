@@ -16,8 +16,6 @@ Aplicação backend robusta desenhada em **Java com Spring Boot**. Seu propósit
 ## Variáveis de Ambiente e Configuração
 A aplicação suporta parametrização dinâmica via variáveis de ambiente com fallbacks seguros.
 
-
-
 | Variável | Padrão (Local)                                     | Descrição |
 | --- |----------------------------------------------------| --- |
 | `SPRING_PROFILES_ACTIVE` | `dev`                                              | Define qual perfil do Spring Boot será ativo. |
