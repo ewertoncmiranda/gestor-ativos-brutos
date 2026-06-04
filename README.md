@@ -1,6 +1,4 @@
 # Gestor de Ativos Brutos (Java Spring Boot)
-
-
 Aplicação backend robusta desenhada em **Java com Spring Boot**. Seu propósito é atuar como API, ponto de integração ou serviço de domínio dentro do ecossistema de monitoramento financeiro da B3, fazendo a ponte entre sistemas externos, mensageria SQS e a camada de persistência.
 
 ## Responsabilidades
@@ -17,6 +15,8 @@ Aplicação backend robusta desenhada em **Java com Spring Boot**. Seu propósit
 
 ## Variáveis de Ambiente e Configuração
 A aplicação suporta parametrização dinâmica via variáveis de ambiente com fallbacks seguros.
+
+
 
 | Variável | Padrão (Local)                                     | Descrição |
 | --- |----------------------------------------------------| --- |

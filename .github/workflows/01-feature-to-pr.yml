@@ -3,7 +3,7 @@ name: Auto PR Feature to Develop
 on:
   push:
     branches:
-      - 'feature/**'
+      - 'feature**'
 
 jobs:
   create-pr:
