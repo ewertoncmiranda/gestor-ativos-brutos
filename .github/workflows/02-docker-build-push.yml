@@ -1,21 +1,17 @@
-name: Build & Push Docker Image
+name: Deploy to Docker Hub (Develop)
 
 on:
   push:
     branches:
       - develop
-  pull_request:
-    branches:
-      - develop
-    types: [closed]
 
 jobs:
   build-and-push:
-    # Executa apenas quando PR é mergeado
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
-    
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,26 +29,31 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO_NAME }}
+          images: |
+            ${{ secrets.DOCKER_USERNAME }}/gestor-ativos-brutos
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=develop
+            type=raw,value=latest
 
-      - name: Build and push
+      - name: Build and push to Docker Hub
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/gestor-ativos-brutos:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/gestor-ativos-brutos:buildcache,mode=max
 
-      - name: Image pushed successfully
-        run: |
-          echo "✅ Docker image pushed successfully!"
-          echo "Repository: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO_NAME }}"
-          echo "Tags: ${{ steps.meta.outputs.tags }}"
+      - name: Docker Hub Description
+        uses: peter-evans/dockerhub-description@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: ${{ secrets.DOCKER_USERNAME }}/gestor-ativos-brutos
+          short-description: "Gestor de Ativos Brutos"
+          readme-filepath: ./README.md
