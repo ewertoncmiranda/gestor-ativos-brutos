@@ -1,6 +1,7 @@
 package br.com.miranda.gestor.ativos.brutos.service;
 
-import br.com.miranda.gestor.ativos.brutos.entrypoint.FilaIndisponivelException;
+import br.com.miranda.gestor.ativos.brutos.exceptions.AtivoNaoEncontradoException;
+import br.com.miranda.gestor.ativos.brutos.exceptions.JsonConversionException;
 import br.com.miranda.gestor.ativos.brutos.external.Ativo;
 import br.com.miranda.gestor.ativos.brutos.external.InsightAcao;
 import br.com.miranda.gestor.ativos.brutos.external.dto.AiAnalysisResponseDTO;
@@ -32,13 +33,13 @@ public class AtivoService {
     private final ObjectMapper objectMapper;
     private final S3InsightService s3InsightService;
 
-
     public AtivoService(
             ConsultaBrApiService consultaBrApiService,
             QueueConnectPort queueConnectPort,
             S3InsightService s3InsightService,
             InsightAcaoService service,
-        GeminiService gemini, ObjectMapper objectMapper
+            GeminiService gemini,
+            ObjectMapper objectMapper
     ) {
         this.consultaBrApiService = consultaBrApiService;
         this.queueConnectPort = queueConnectPort;
@@ -48,12 +49,11 @@ public class AtivoService {
         this.s3InsightService = s3InsightService;
     }
 
-
     public Ativo processar(String codAtivo) {
         var retorno = consultaBrApiService.executar(codAtivo);
         if (Objects.isNull(retorno) || retorno.getResults().isEmpty()) {
             log.error("{} - Nenhum dado retornado para ativo: {}", SERVICE, codAtivo);
-            return null;
+            throw new AtivoNaoEncontradoException(codAtivo);
         }
 
         BrapiAtivoDTO brapiDto = retorno.getResults().getFirst();
@@ -62,21 +62,20 @@ public class AtivoService {
 
         log.info("{} - Payload JSON gerado com {} bytes", SERVICE, payload.length());
 
-        try {
-            queueConnectPort.enviarMensagemParaFila(payload);
-            List<InsightAcao> insightAcaos = service.buscarPorSimboloNative(codAtivo);
+        queueConnectPort.enviarMensagemParaFila(payload);
 
-            InsightConsolidadoDTO consolidado = InsightConsolidator.consolidar(insightAcaos);
-            String prompt = PromptBuilderUtils.montarPromptAnaliseQuantitativa(consolidado);
-            var resultado = gemini.gerarConteudo(prompt, "gemini-3-flash-preview")
-                    .map(this::limparEResolverJson)
-                    .doOnNext(analise ->{
-                        s3InsightService.salvarInsightNoS3(analise, codAtivo);
-                    });
-
-        }catch (FilaIndisponivelException e) {
-            log.error("{} - Falha ao enviar mensagem para fila,fluxo indisponivel {}", SERVICE, e.getMessage(), e);
+        List<InsightAcao> insightAcaos = service.buscarPorSimboloNative(codAtivo);
+        InsightConsolidadoDTO consolidado = InsightConsolidator.consolidar(insightAcaos);
+        if (Objects.isNull(consolidado)) {
+            log.warn("{} - Nenhum insight consolidado encontrado para ativo: {}", SERVICE, codAtivo);
+            return ativo;
         }
+
+        String prompt = PromptBuilderUtils.montarPromptAnaliseQuantitativa(consolidado);
+        gemini.gerarConteudo(prompt, "gemini-3-flash-preview")
+                .map(this::limparEResolverJson)
+                .doOnNext(analise -> s3InsightService.salvarInsightNoS3(analise, codAtivo))
+                .block();
 
         return ativo;
     }
@@ -90,10 +89,8 @@ public class AtivoService {
 
             return objectMapper.readValue(cleanJson, AiAnalysisResponseDTO.class);
         } catch (Exception e) {
-            log.error("(CONTROLLER)-Erro ao parsear resposta da IA: {}", e.getMessage());
-            return AiAnalysisResponseDTO.builder()
-                    .resumo("Erro no processamento da IA. Conteúdo bruto: " + rawResponse)
-                    .build();
+            log.error("{} - Erro ao parsear resposta da IA: {}", SERVICE, e.getMessage(), e);
+            throw new JsonConversionException("resposta da IA em formato inesperado", e);
         }
     }
 }

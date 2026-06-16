@@ -1,5 +1,6 @@
 package br.com.miranda.gestor.ativos.brutos.service;
 
+import br.com.miranda.gestor.ativos.brutos.exceptions.ExternalStorageException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +52,7 @@ public class S3InsightService {
 
         } catch (Exception e) {
             log.error("{} - Erro ao salvar insight no S3: {}", SERVICE, e.getMessage(), e);
-            throw new  RuntimeException(e);
+            throw new ExternalStorageException(simbolo, e);
         }
     }
 

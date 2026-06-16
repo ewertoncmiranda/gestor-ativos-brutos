@@ -1,5 +1,6 @@
 package br.com.miranda.gestor.ativos.brutos.service;
 
+import br.com.miranda.gestor.ativos.brutos.exceptions.BrapiIntegrationException;
 import br.com.miranda.gestor.ativos.brutos.external.dto.BrapiResponseDTO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -63,10 +64,10 @@ public class ConsultaBrApiService {
         } catch (HttpClientErrorException ex) {
             log.error("{}-Erro HTTP ao consultar Brapi. Symbol: {}, Status: {}, Mensagem: {}",
                     BRAPI_SERVICE, symbol, ex.getStatusCode(), ex.getMessage());
-            throw ex;
+            throw new BrapiIntegrationException(symbol, "HTTP " + ex.getStatusCode(), ex);
         } catch (JsonProcessingException e) {
             log.error("{}-Erro ao processar JSON da resposta BRAPI. Symbol: {}", BRAPI_SERVICE, symbol, e);
-            throw new RuntimeException("Erro ao processar JSON da resposta da Brapi", e);
+            throw new BrapiIntegrationException(symbol, "resposta JSON invalida", e);
         }
     }
 }

@@ -1,5 +1,6 @@
 package br.com.miranda.gestor.ativos.brutos.entrypoint.controller;
 
+import br.com.miranda.gestor.ativos.brutos.exceptions.JsonConversionException;
 import br.com.miranda.gestor.ativos.brutos.external.InsightAcao;
 import br.com.miranda.gestor.ativos.brutos.external.dto.AiAnalysisResponseDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.InsightConsolidadoDTO;
@@ -32,20 +33,18 @@ public class InsightAcaoController {
     private final ObjectMapper objectMapper;
 
     @GetMapping("/{simbolo}/analise")
-    public Mono<AiAnalysisResponseDTO> buscarPorSimbolo(
-            @PathVariable String simbolo) {
+    public Mono<AiAnalysisResponseDTO> buscarPorSimbolo(@PathVariable String simbolo) {
+        log.info("{}-Buscando insights e gerando analise IA para simbolo: {}", BRAPI_SERVICE, simbolo);
+        List<InsightAcao> insights = service.buscarPorSimbolo(simbolo);
 
-        log.info("{}-Buscando insights e gerando análise IA para simbolo: {}", BRAPI_SERVICE, simbolo);
-        List<InsightAcao> sAcaos = service.buscarPorSimbolo(simbolo);
-
-        if (Objects.isNull(sAcaos) || sAcaos.isEmpty()) {
+        if (Objects.isNull(insights) || insights.isEmpty()) {
             log.warn("{}-Nenhum insight encontrado para simbolo: {}", BRAPI_SERVICE, simbolo);
             return Mono.just(AiAnalysisResponseDTO.builder()
-                    .resumo("Nenhum insight encontrado para o símbolo: " + simbolo)
+                    .resumo("Nenhum insight encontrado para o simbolo: " + simbolo)
                     .build());
         }
 
-        InsightConsolidadoDTO consolidado = InsightConsolidator.consolidar(sAcaos);
+        InsightConsolidadoDTO consolidado = InsightConsolidator.consolidar(insights);
         String prompt = PromptBuilderUtils.montarPromptAnaliseQuantitativa(consolidado);
         return gemini.gerarConteudo(prompt, "gemini-3-flash-preview")
                 .map(this::limparEResolverJson);
@@ -60,11 +59,8 @@ public class InsightAcaoController {
 
             return objectMapper.readValue(cleanJson, AiAnalysisResponseDTO.class);
         } catch (Exception e) {
-            log.error("(CONTROLLER)-Erro ao parsear resposta da IA: {}", e.getMessage());
-            return AiAnalysisResponseDTO.builder()
-                    .resumo("Erro no processamento da IA. Conteúdo bruto: " + rawResponse)
-                    .build();
+            log.error("(CONTROLLER)-Erro ao parsear resposta da IA: {}", e.getMessage(), e);
+            throw new JsonConversionException("resposta da IA em formato inesperado", e);
         }
     }
-
 }

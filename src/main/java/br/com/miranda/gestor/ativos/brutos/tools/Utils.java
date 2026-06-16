@@ -1,5 +1,6 @@
 package br.com.miranda.gestor.ativos.brutos.tools;
 
+import br.com.miranda.gestor.ativos.brutos.exceptions.JsonConversionException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesUtils.UTILS ;
@@ -19,7 +20,7 @@ public class Utils {
         } catch (Exception e) {
             log.error("{}-Erro ao converter objeto para JSON. Tipo: {}, Erro: {}",
                     UTILS, obj.getClass().getSimpleName(), e.getMessage(), e);
-            throw new RuntimeException("Erro ao converter objeto para JSON", e);
+            throw new JsonConversionException("objeto " + obj.getClass().getSimpleName(), e);
         }
     }
 
