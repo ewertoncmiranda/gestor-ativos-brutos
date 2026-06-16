@@ -46,10 +46,7 @@ public class InsightAcaoController {
         }
 
         InsightConsolidadoDTO consolidado = InsightConsolidator.consolidar(sAcaos);
-
         String prompt = PromptBuilderUtils.montarPromptAnaliseQuantitativa(consolidado);
-
-
         return gemini.gerarConteudo(prompt, "gemini-3-flash-preview")
                 .map(this::limparEResolverJson);
     }

@@ -28,7 +28,9 @@ public class AtivoController {
         log.info("{}-Requisição recebida para buscar ativo: {}", CONTROLLER, ativo);
         var ativo1 = service.processar(ativo);
         log.info("{}-Resposta preparada para ativo: {}", CONTROLLER, ativo);
+        //TODO - IMPLEMENTAR  GLOBAL EXCEPTIONHANDLER
         return ativo != null ? ResponseEntity.ok(ativo1) : ResponseEntity.notFound().build();
+
     }
 
     @PostMapping("/registrar/{ativo}")
