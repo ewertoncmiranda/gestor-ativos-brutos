@@ -1,7 +1,10 @@
 package br.com.miranda.gestor.ativos.brutos.entrypoint;
 
-public class FilaIndisponivelException extends RuntimeException{
-    public FilaIndisponivelException(String message, Exception e) {
-        super(message,e);
+import br.com.miranda.gestor.ativos.brutos.exceptions.QueueUnavailableException;
+
+public class FilaIndisponivelException extends QueueUnavailableException {
+
+    public FilaIndisponivelException(String queueUrl, Exception e) {
+        super(queueUrl, e);
     }
 }

@@ -46,7 +46,7 @@ public class QueueConnectImpl implements QueueConnectPort {
                 return enviarMensagemParaFila(mensagem);
             }
             log.error("{}-Erro ao enviar mensagem para fila: {}. Erro: {}", QUEUE, queueUrl, e.getMessage(), e);
-            throw new FilaIndisponivelException("Fila Indisponivel",e);
+            throw new FilaIndisponivelException(queueUrl, e);
         }
     }
 }
