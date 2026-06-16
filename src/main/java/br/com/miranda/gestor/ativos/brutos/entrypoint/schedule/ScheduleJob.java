@@ -23,6 +23,8 @@ public class ScheduleJob {
     private final ConcurrentLinkedQueue<String> queue = new ConcurrentLinkedQueue<>();
 
     public void registerAtivo(String codigoAtivo) {
+        //TODO - IMPLEMENTAR  GLOBAL EXCEPTIONHANDLER
+        //TODO - CRIAR RUNTIMEEXCEPTIONS PERSONALIZADAS
         if (codigoAtivo == null || codigoAtivo.isBlank()) {
             return;
         }
