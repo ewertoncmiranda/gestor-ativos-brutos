@@ -12,4 +12,13 @@ public class ExternalStorageException extends ApplicationRuntimeException {
                 cause
         );
     }
+
+    public ExternalStorageException(String action, String target, Throwable cause) {
+        super(
+                "S3_STORAGE_ERROR",
+                action + ": " + target,
+                HttpStatus.BAD_GATEWAY,
+                cause
+        );
+    }
 }
