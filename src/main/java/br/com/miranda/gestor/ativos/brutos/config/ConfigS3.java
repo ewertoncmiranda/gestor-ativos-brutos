@@ -17,7 +17,7 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesUtils.CONFIG_S
 @Configuration
 public class ConfigS3 {
 
-    @Value("${aws.s3.endpoint.base:http://localhost:4566}")
+    @Value("${aws.s3.endpoint.base}")
     private String s3EndpointBase;
 
     @Value("${aws.accessKeyId}")
