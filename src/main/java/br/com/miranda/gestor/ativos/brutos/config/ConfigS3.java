@@ -11,7 +11,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 
 import java.net.URI;
 
-import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesUtils.CONFIG_S3;
+import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.CONFIG_S3;
 
 @Slf4j
 @Configuration

@@ -1,7 +1,7 @@
 package br.com.miranda.gestor.ativos.brutos.config;
 
 import lombok.extern.slf4j.Slf4j;
-import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesUtils.CONFIG_SQS;
+import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.CONFIG_SQS;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
