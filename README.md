@@ -30,12 +30,12 @@ Cliente HTTP
 | Camada/pacote | Responsabilidade |
 | --- | --- |
 | `entrypoint/controller` | Rotas REST e validação básica da entrada. |
-| `entrypoint/schedule` | Fila local e processamento assíncrono em lote. |
-| `service` | Orquestra BRAPI, SQS e leitura das análises. |
+| `entrypoint/schedule` | `AgendadorAtivos`: reprocessa a carteira persistida em `ativo_monitorado` a cada ciclo devido. |
+| `service` | Orquestra BRAPI, SQS, leitura das análises e a carteira de monitoramento (`ServicoAtivoMonitorado`). |
 | `external/http` | Cliente HTTP da BRAPI. |
 | `external/queue` | Adaptador de publicação no SQS. |
-| `external` e `external/dto` | Entidade JPA e contratos de entrada/saída. |
-| `repository` | Acesso à tabela `insight_acao`. |
+| `external` e `external/dto` | Entidades JPA (`AnaliseAcaoEntity`, `AtivoMonitoradoEntity`) e contratos de entrada/saída. |
+| `repository` | Acesso às tabelas `insight_acao` e `ativo_monitorado`. |
 | `tools` | Serialização, consolidação e decisão determinística. |
 | `exceptions` | Exceções da aplicação e contrato global de erro. |
 | `config` | Configuração do cliente SQS e propriedades. |
@@ -48,7 +48,8 @@ WebFlux e OpenFeign estão declarados no `pom.xml`, mas não são usados pela im
 | --- | --- | --- | --- | --- |
 | `GET` | `/ativos/{ativo}` | `AtivoController.buscarPorSimbolo` | `200` com `Ativo` | Consulta a cotação na BRAPI e publica o mesmo ativo em `tratar-ativos`. É um GET com efeito colateral. |
 | `GET` | `/ativos/robusto/{ativo}` | `AtivoController.buscarPorSimboloComSerieHistorica` | `200` com `Ativo` | Consulta cotação e histórico fixo de 1 ano/1 dia; publica a cotação em `tratar-ativos` e o histórico em `sqs-registrar-series-historicas`. |
-| `POST` | `/ativos/registrar/{ativo}` | `AtivoController.registrarAtivo` | `202`, sem corpo | Normaliza o símbolo e o adiciona a uma fila apenas em memória. O agendador o processa uma vez. |
+| `POST` | `/ativos/registrar/{ativo}` | `AtivoController.registrarAtivo` | `202`, sem corpo | Normaliza o símbolo e faz upsert em `ativo_monitorado` (`COTACAO_E_HISTORICO`, 30s); dispara `processarRobusto` na hora (falha aqui é só logada); o agendador reprocessa o ativo automaticamente a cada 30s a partir daí. |
+| `GET` | `/ativos/registrados` | `AtivoController.listarRegistrados` | `200` com `AtivoMonitoradoDTO[]` | Lista a carteira monitorada, ordenada por símbolo. |
 | `GET` | `/analises/{simbolo}/analise` | `AnaliseAcaoController.buscarPorSimbolo` | `200` com `RespostaAnaliseIaDTO` | Lê todo o histórico do símbolo em `insight_acao`, consolida os dados e aplica regras determinísticas. |
 | `GET` | `/api/v2/stocks/historical` | `HistoricoAcoesController.buscarHistorico` | `200` com `RespostaHistoricoAcoesDTO` | Proxy autenticado para o histórico da BRAPI; não publica em SQS. |
 | `GET` | `/actuator` | Spring Boot Actuator | `200` com links dos endpoints expostos | Disponível conforme a exposição do perfil ativo. |
@@ -117,9 +118,30 @@ O histórico publicado em `sqs-registrar-series-historicas` é consumido pelo `g
 curl -i -X POST "http://localhost:9090/ativos/registrar/vale3"
 ```
 
-O código é convertido para `VALE3` e colocado em uma `ConcurrentLinkedQueue`. A cada execução, iniciada 3 segundos depois do término da execução anterior, `AgendadorAtivos` drena toda a fila e chama o mesmo fluxo de cotação e publicação de `GET /ativos/{ativo}`.
+O código é convertido para `VALE3` e persistido em `ativo_monitorado` (upsert por símbolo: se já existe, só reativa `ativo=true`; se é novo, `tipo_coleta=COTACAO_E_HISTORICO` e `intervalo_segundos=30`). Na mesma requisição, `processarRobusto(ativo)` é chamado imediatamente (best-effort — se a BRAPI falhar aqui, o registro em si já foi salvo e o log só avisa; a resposta continua `202`).
 
-O registro não é uma assinatura recorrente: cada chamada gera no máximo um processamento, não há deduplicação e a fila é perdida quando a aplicação reinicia. Falhas do lote são registradas em log e não recolocam o ativo na fila.
+A partir daí, `AgendadorAtivos` (`@Scheduled(fixedDelay=5000)`) verifica a cada 5s quais ativos ativos estão "devidos" (`atualizado_em + intervalo_segundos` no passado) e reprocessa cada um — efetivamente a cada ~30s por ativo, sem sincronizar todos no mesmo instante. É recorrente de verdade e sobrevive a restart, porque a carteira mora no banco, não em memória. Deduplicação é garantida pela `UNIQUE KEY` do símbolo. Falhas (ex.: BRAPI fora do ar) não avançam `atualizado_em`, então o ativo continua "devido" e é retentado no próximo tick de 5s, sem backoff.
+
+### `GET /ativos/registrados`
+
+```bash
+curl "http://localhost:9090/ativos/registrados"
+```
+
+```json
+[
+  {
+    "simbolo": "VALE3",
+    "ativo": true,
+    "tipoColeta": "COTACAO_E_HISTORICO",
+    "intervaloSegundos": 30,
+    "criadoEm": "2026-09-25T19:24:48",
+    "atualizadoEm": "2026-09-25T19:53:46"
+  }
+]
+```
+
+Lista todos os registros de `ativo_monitorado`, ordenados por símbolo. `atualizadoEm` marca o último processamento **bem-sucedido**; se estiver estagnado enquanto `criadoEm` avança, o ativo está falhando nas tentativas (ver logs do `AgendadorAtivos`).
 
 ### `GET /analises/{simbolo}/analise`
 
@@ -241,6 +263,21 @@ O adaptador SQS faz uma tentativa inicial e até três novas tentativas, sem esp
 | `detalhes_json` | JSON | Só campos numéricos no primeiro nível entram nas médias. |
 
 Com `spring.jpa.hibernate.ddl-auto=update`, a aplicação pode alterar o schema durante a inicialização.
+
+### MySQL: carteira de monitoramento
+
+- Direção: esta aplicação lê e escreve (é a única leitora/escritora).
+- Tabela: `ativo_monitorado` (schema definido em `infra-b3-ecossytem/mysql-init`, mapeada por `AtivoMonitoradoEntity`).
+
+| Coluna | Tipo Java | Observação |
+| --- | --- | --- |
+| `id` | `Long` | Chave autoincremental. |
+| `simbolo` | `String(10)` | `UNIQUE`, usada como chave de upsert. |
+| `ativo` | `Boolean` | `true` por padrão; não há endpoint para desativar ainda. |
+| `tipoColeta` | enum `COTACAO` / `COTACAO_E_HISTORICO` | Cadastros via API entram como `COTACAO_E_HISTORICO`. |
+| `intervaloSegundos` | `Integer` | Mínimo 30 (`CHECK` no schema); 30 por padrão. |
+| `versao` | `Long` | `@Version`, optimistic locking. |
+| `criadoEm` / `atualizadoEm` | `LocalDateTime` | `atualizadoEm` avança só em processamento bem-sucedido. |
 
 ### Contrato de erro HTTP
 
@@ -376,7 +413,7 @@ SPRING_PROFILES_ACTIVE=dev BRAPI_API_KEY='<sua-chave-brapi>' \
 - A contagem de venda reconhece apenas a recomendação literal `VENDA`.
 - A serialização para SQS cria um `ObjectMapper` próprio, sem módulos explícitos para tipos de data/hora.
 - O cliente BRAPI não configura timeouts e as retentativas SQS não têm backoff.
-- O scheduler não persiste, não deduplica e não repete os ativos registrados.
+- O scheduler roda 24/7, sem restringir ao horário de pregão; ativos que falham na coleta (ex.: BRAPI fora do ar) são retentados a cada 5s, sem backoff.
 - Não há autenticação ou autorização nas rotas da aplicação.
 - CORS libera todos os métodos e headers para as origens configuradas em `CORS_ALLOWED_ORIGINS`; não usa `allowCredentials`, então o padrão serve para desenvolvimento local do front, mas a lista de origens deve ser revisada antes de qualquer deploy real.
 - A suíte atual contém apenas um teste trivial, sem cobertura dos contratos ou integrações.

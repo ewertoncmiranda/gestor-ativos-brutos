@@ -35,6 +35,8 @@ Fluxo SDD: `Spec → Plano → Tarefas → Implementação → Verificação →
 3. **Lê** os insights que o `gerar-insights` gravou em MySQL (`insight_acao`), consolida os sinais e deriva a decisão (sentimento, risco, recomendação) por **regras deterministicas**, sem IA nem storage externo.
 
 > **ATUALIZAÇÃO (2026-09-25):** Gemini e S3 foram removidos deste serviço (DynamoDB, nunca usado, foi removido do `gerar-insights`). A decisão consolidada agora é calculada em `MontadorDecisaoDeterministica` a partir dos mesmos dados de `AnaliseConsolidadaDTO`, sem chamada externa nem persistência de arquivo. Itens marcados OBSOLETO abaixo (`ISS-13`, `ISS-16`, `F1`, `F3`, `TASK-22`, `TASK-23`, `CTR-04`, `REQ-05`) eram específicos do fluxo removido. **`ISS-02` continua ABERTO e agora é mais relevante**: o bug de contagem alimenta diretamente `MontadorDecisaoDeterministica`, não só o prompt do Gemini.
+>
+> **ATUALIZAÇÃO (2026-09-25, 2ª):** `POST /ativos/registrar/{ativo}` deixou de enfileirar em memória (`ISS-08` **RESOLVIDO**). Agora persiste o ativo na tabela `ativo_monitorado` (já existia no schema, nunca usada até aqui) via `ServicoAtivoMonitorado`, dispara a primeira coleta robusta na hora, e o `AgendadorAtivos` reprocessa cada ativo ativo automaticamente a cada `intervalo_segundos` (30s por padrão) — sobrevive a restart. Novo `GET /ativos/registrados` lista o que está cadastrado, consumido pela nova aba "Monitorados" do front (`painel-ativos-frontend`, `TASK-01`/`ISS-01` do front **RESOLVIDO**).
 
 ### 2.1 Endpoints HTTP
 
@@ -42,7 +44,8 @@ Fluxo SDD: `Spec → Plano → Tarefas → Implementação → Verificação →
 |---|---|---|---|
 | GET | `/ativos/{ativo}` | Consulta a cotação na BRAPI e devolve o `Ativo` | **Publica** na fila `tratar-ativos` (um GET com efeito colateral, ver `ISS-09`) |
 | GET | `/ativos/robusto/{ativo}` | Cotação + série de 1 ano (`1y`/`1d`) | Publica em `tratar-ativos` **e** em `sqs-registrar-series-historicas` |
-| POST | `/ativos/registrar/{ativo}` | Enfileira o ativo **em memória** para o agendador (202) | O agendador executa `processar()` uma única vez |
+| POST | `/ativos/registrar/{ativo}` | Persiste o ativo em `ativo_monitorado` (upsert por símbolo, `tipo_coleta=COTACAO_E_HISTORICO`, `intervalo_segundos=30`) e devolve 202 | Dispara `processarRobusto()` imediatamente (falha aqui é só logada — o registro já foi persistido, o agendador tenta de novo sozinho); depois, `AgendadorAtivos` reprocessa a cada `intervalo_segundos` até o ativo ser desativado |
+| GET | `/ativos/registrados` | Lista os ativos cadastrados em `ativo_monitorado`, ordenados por símbolo (`AtivoMonitoradoDTO[]`) | — |
 | GET | `/analises/{simbolo}/analise` | Consolida todo o histórico de `insight_acao` e devolve a decisão deterministica | — |
 | GET | `/api/v2/stocks/historical` | Proxy para a BRAPI (`symbols`, `range`, `interval`, `startDate`, `endDate`, `sortOrder`) | — |
 | GET | `/actuator/health`, `/actuator/prometheus` | Saúde e métricas | — |
@@ -56,6 +59,12 @@ BRAPI `quote` → `AtivoBrapiDTO` → ModelMapper → `Ativo` → JSON → SQS `
 1. Consulta a BRAPI e publica em `tratar-ativos`.
 
 **Fluxo C — robusto (`processarRobusto`)**: igual ao B, mas também publica a série histórica de 1 ano.
+
+**Fluxo E — registro e monitoramento recorrente (`POST /ativos/registrar/{ativo}` + `AgendadorAtivos`)**
+1. `ServicoAtivoMonitorado.registrar()` faz upsert em `ativo_monitorado` por símbolo (novo: `tipoColeta=COTACAO_E_HISTORICO`, `intervaloSegundos=30`, `atualizadoEm=agora`; existente: só reativa `ativo=true`).
+2. O controller chama `processarRobusto()` na mesma requisição (best-effort, não falha o 202 se a BRAPI estiver fora).
+3. `AgendadorAtivos.processarAtivosMonitorados()` roda a cada 5s (`@Scheduled(fixedDelay=5000)`), busca `findByAtivoTrue()` e, para cada linha, só processa se `atualizadoEm + intervaloSegundos` já passou — tick fino (5s) checando um intervalo mais grosso (30s) por ativo, em vez de um tick fixo de 30s que sincronizaria artificialmente todos os cadastros.
+4. Em caso de sucesso, `marcarProcessado()` grava `atualizadoEm=agora`, adiando o próximo ciclo. Em caso de falha (ex.: BRAPI fora do ar), `atualizadoEm` não avança, então o ativo continua "devido" e é retentado no próximo tick de 5s — sem backoff (mesma limitação de `ISS-10`).
 
 **Fluxo D — decisão consolidada (`GET /analises/{simbolo}/analise`)**
 1. Lê `insight_acao` do símbolo (todo o histórico).
@@ -76,13 +85,13 @@ Java 21 (compilado com Maven em imagem Temurin 24), Spring Boot 3.3.0, Spring We
 | Pacote | Responsabilidade |
 |---|---|
 | `entrypoint/controller` | Controllers REST (`AtivoController`, `AnaliseAcaoController`, `HistoricoAcoesController`) |
-| `entrypoint/schedule` | `AgendadorAtivos`: fila em memória (`ConcurrentLinkedQueue`), `@Scheduled(fixedDelay=3000)` |
-| `service` | `ServicoAtivo` (orquestração), `ServicoAnaliseAcao` (leitura de insights) |
+| `entrypoint/schedule` | `AgendadorAtivos`: le `ativo_monitorado` via `ServicoAtivoMonitorado`, `@Scheduled(fixedDelay=5000)` (tick fino checando o intervalo por ativo, ver Fluxo E) |
+| `service` | `ServicoAtivo` (orquestração), `ServicoAnaliseAcao` (leitura de insights), `ServicoAtivoMonitorado` (CRUD de `ativo_monitorado`) |
 | `port` | `PortaFilaMensagens` (porta de saída para mensageria) |
 | `external/queue` | `AdaptadorFilaSqs` (3 tentativas extras, sem backoff) |
 | `external/http` | `ClienteBrApi` (RestTemplate; token no header `Authorization`) |
-| `external` | `Ativo` (modelo), `AnaliseAcaoEntity` (JPA sobre `insight_acao`), DTOs |
-| `repository` | `RepositorioAnaliseAcao` (JPA + query nativa) |
+| `external` | `Ativo` (modelo), `AnaliseAcaoEntity` (JPA sobre `insight_acao`), `AtivoMonitoradoEntity` (JPA sobre `ativo_monitorado`), `TipoColeta` (enum), DTOs |
+| `repository` | `RepositorioAnaliseAcao` (JPA + query nativa), `RepositorioAtivoMonitorado` (JPA) |
 | `tools` | `ConsolidadorAnaliseAcao`, `MontadorDecisaoDeterministica`, `ConversorJson`, `ConversorJsonNode`, constantes |
 | `exceptions` | Hierarquia `ExcecaoAplicacao` + `TratadorGlobalExcecoes` (`@RestControllerAdvice`) |
 | `config` | Beans de SQS e `ConfigProperties` |
@@ -108,6 +117,19 @@ Java 21 (compilado com Maven em imagem Temurin 24), Spring Boot 3.3.0, Spring We
 | `spring.jpa.hibernate.ddl-auto` | — | `update` (`ISS-05`) | `update` |
 
 `application.properties` está **vazio**; o `Dockerfile` define `SPRING_PROFILES_ACTIVE=docker`, mas não existe `application-docker.properties` (`ISS-11`).
+
+### 3.5 Tabela `ativo_monitorado` (carteira de monitoramento, 2026-09-25)
+
+Definida em `infra-b3-ecossytem/mysql-init/1 - schema.sql`, mapeada por `AtivoMonitoradoEntity`. Fonte de verdade da carteira recorrente (Fluxo E, seção 2.2) — substituiu a fila em memória do `AgendadorAtivos`.
+
+| Coluna | Tipo | Observação |
+|---|---|---|
+| `simbolo` | VARCHAR(10), UNIQUE | Chave de upsert em `ServicoAtivoMonitorado.registrar()` |
+| `ativo` | BOOLEAN, default true | Sem UI/endpoint para desativar ainda (ver 5.3) |
+| `tipo_coleta` | ENUM (`COTACAO`, `COTACAO_E_HISTORICO`) | Todo cadastro novo via API entra como `COTACAO_E_HISTORICO` |
+| `intervalo_segundos` | INT, `CHECK >= 30` | 30 por padrão nos cadastros novos; o `AgendadorAtivos` respeita o valor da linha |
+| `versao` | BIGINT | `@Version` — optimistic locking nativo do JPA |
+| `atualizado_em` | DATETIME | Marca o último processamento bem-sucedido; usado pelo agendador pra saber se o ativo está "devido" |
 
 ---
 
@@ -137,7 +159,7 @@ A definição canônica dos contratos entre serviços fica em `infra-b3-ecossyte
 OBSOLETO — descrevia o prompt enviado ao Gemini (removido). O prompt pedia "risco 0-100", mas o schema definia `risco` como string (inconsistência, `ISS-13`, também obsoleto). A decisão hoje é montada em código por `MontadorDecisaoDeterministica`, sem prompt/schema.
 
 ### 5.3 Agendador
-Cada `POST /ativos/registrar/{ativo}` gera **uma** execução. Não há recorrência, persistência nem deduplicação; a fila se perde quando o serviço reinicia. O README descreve isso como "processamento periódico" (`ISS-08`).
+**RESOLVIDO (2026-09-25, ver `ISS-08`):** Cada `POST /ativos/registrar/{ativo}` persiste em `ativo_monitorado` e entra em monitoramento recorrente real (30s por padrão, configurável por linha via `intervalo_segundos`, mínimo 30 pelo `CHECK` do schema). Sobrevive a restart do serviço. Deduplicação por símbolo via `UNIQUE KEY uq_ativo_monitorado_simbolo` (upsert). Não há UI nem endpoint para desativar/pausar um ativo (`ativo=false`) — a coluna existe no schema mas nada a escreve ainda; fora de escopo do pedido original.
 
 ---
 
@@ -152,7 +174,7 @@ Cada `POST /ativos/registrar/{ativo}` gera **uma** execução. Não há recorrê
 | REQ-03 | Publicar a série histórica em `sqs-registrar-series-historicas` (CTR-02) | IMPLEMENTADO (só via `/ativos/robusto`, não commitado) |
 | REQ-04 | Gerar análise consolidada a partir dos insights (hoje por regras deterministicas, não IA) | IMPLEMENTADO (com defeito `ISS-02` ainda aberto) |
 | REQ-05 | Salvar, listar e baixar análises no S3 | REMOVIDO (2026-09-25) |
-| REQ-06 | Agendar coleta **recorrente** de uma carteira de ativos | PLANEJADO (`TASK-20`) |
+| REQ-06 | Agendar coleta **recorrente** de uma carteira de ativos | IMPLEMENTADO (`TASK-20`, 2026-09-25 — cadastro persistido + reprocessamento a cada 30s; não há ainda restrição ao horário de pregão) |
 | REQ-07 | Gerar a análise de IA somente depois que o insight do dia estiver disponível | PLANEJADO (`TASK-21`) |
 
 Critérios de aceite de referência:
@@ -187,7 +209,7 @@ Critérios de aceite de referência:
 | ISS-05 | Alto | Três fontes de schema para as mesmas tabelas: `mysql-init` (infra), Hibernate `ddl-auto=update` (Java) e entidades SQLAlchemy (Python) | `application-*.properties`, `external/AnaliseAcaoEntity.java` | Drift de schema; o Hibernate pode alterar uma tabela que pertence ao Python | `ddl-auto=validate`; schema único versionado (ver DEC do ecossistema) | ABERTO |
 | ISS-06 | Médio | `ConfigSqs` ignora a configuração: credenciais fixas `"test"/"test"` e região fixa `SA_EAST_1` | `config/ConfigSqs.java` | Não funciona em AWS real | Usar `DefaultCredentialsProvider` (ou as properties) e região configurável | ABERTO |
 | ISS-07 | Médio | `ConversorJson` usa `new ObjectMapper()` sem `JavaTimeModule`; `Ativo.regularMarketTime` é `LocalDateTime` e vem de uma String via ModelMapper | `tools/ConversorJson.java`, `external/Ativo.java` | O campo tende a chegar nulo, ou a serialização falha se for preenchido; o consumidor perde o timestamp da cotação, necessário para idempotência | Injetar o `ObjectMapper` do Spring; converter o epoch da BRAPI para `Instant`; teste de contrato | ABERTO (a verificar com teste) |
-| ISS-08 | Médio | O agendador não é recorrente e a fila fica em memória | `entrypoint/schedule/AgendadorAtivos.java` | Perda de trabalho no restart; README incorreto | Carteira persistida (tabela) + cron (`@Scheduled(cron=…)` no horário do pregão) + deduplicação | ABERTO |
+| ISS-08 | Médio | ~~O agendador não é recorrente e a fila fica em memória~~ | `entrypoint/schedule/AgendadorAtivos.java` | ~~Perda de trabalho no restart; README incorreto~~ | Carteira persistida em `ativo_monitorado` + tick de 5s checando `intervalo_segundos` por ativo + deduplicação por `UNIQUE KEY` | RESOLVIDO (2026-09-25) — falta ainda restringir ao horário de pregão, ver `TASK-20` |
 | ISS-09 | Médio | `GET /ativos/{ativo}` publica no SQS (efeito colateral); cada chamada gera histórico e insight novos | `entrypoint/controller/AtivoController.java` | Duplicatas no `gerar-insights`; semântica HTTP errada | `POST` para publicar; `GET` só consulta; chave de deduplicação (`symbol` + `regularMarketTime`) como atributo da mensagem | ABERTO |
 | ISS-10 | Médio | Retentativas do SQS sem backoff; `RestTemplate` sem timeout; a espera de 4 s bloqueia a thread do scheduler | `AdaptadorFilaSqs.java`, `ClienteBrApi.java`, `AgendadorAtivos.java` | Tempestade de retentativas; threads presas | Backoff exponencial (Resilience4j/Spring Retry); timeouts de conexão e leitura; rate limiter | ABERTO |
 | ISS-11 | Médio | Dockerfile: JDK completo em runtime, root, perfil `docker` inexistente, `-DskipTests`, compila com Temurin 24 para alvo Java 21 | `Dockerfile` | Imagem pesada e insegura; sem o compose, a imagem sobe sem configuração | Runtime `eclipse-temurin:21-jre-alpine`, `USER` não-root, `application-docker.properties`, rodar os testes no build/CI | ABERTO |
@@ -232,7 +254,7 @@ Critérios de aceite de referência:
 
 | ID | Tarefa | Resolve | Critério de aceite | Depende de | Status |
 |---|---|---|---|---|---|
-| TASK-20 | Carteira persistida + coleta agendada por cron no horário do pregão | ISS-08, REQ-06 | Ativos da carteira coletados 1×/dia útil, sem duplicata | TASK-12 | ABERTO |
+| TASK-20 | Carteira persistida + coleta agendada por cron no horário do pregão | ISS-08, REQ-06 | Ativos da carteira coletados 1×/dia útil, sem duplicata | TASK-12 | PARCIAL (2026-09-25) — carteira persistida (`ativo_monitorado`) e reprocessamento recorrente a cada 30s implementados; falta restringir ao horário de pregão (hoje roda 24/7) |
 | TASK-21 | Análise de IA disparada por evento "insight gerado" (SNS `transmitir-lote-dados` ou fila nova), não na sequência da publicação | ISS-03, REQ-07 | A análise usa o insight do dia | contrato novo no ecossistema | ABERTO |
 | TASK-22 | OBSOLETO — prompt/schema do Gemini removidos; disclaimer legal (`F2`) deve ser adicionado direto na resposta HTTP de `MontadorDecisaoDeterministica` | F2 | Resposta HTTP contém `aviso_legal` | TASK-03 | ABERTO (reescopado para F2) |
 | TASK-23 | OBSOLETO — S3 removido, sem chave a corrigir | ISS-16 | — | — | RESOLVIDO (remoção) |

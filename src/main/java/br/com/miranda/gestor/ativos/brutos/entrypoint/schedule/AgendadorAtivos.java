@@ -1,18 +1,26 @@
 package br.com.miranda.gestor.ativos.brutos.entrypoint.schedule;
 
+import br.com.miranda.gestor.ativos.brutos.external.AtivoMonitoradoEntity;
+import br.com.miranda.gestor.ativos.brutos.external.TipoColeta;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtivo;
+import br.com.miranda.gestor.ativos.brutos.service.ServicoAtivoMonitorado;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.AGENDADOR;
 
+/**
+ * Verifica periodicamente os ativos monitorados (tabela ativo_monitorado) e
+ * reprocessa cada um quando seu intervaloSegundos ja passou desde o ultimo
+ * processamento. O tick roda a cada 5s para dar precisao real ao intervalo
+ * por ativo (ex.: 30s), sem exigir um agendador dedicado por linha.
+ */
 @Slf4j
 @Component
 @EnableScheduling
@@ -20,49 +28,42 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.AGEN
 public class AgendadorAtivos {
 
     private final ServicoAtivo servicoAtivo;
-    private final ConcurrentLinkedQueue<String> filaAtivos = new ConcurrentLinkedQueue<>();
+    private final ServicoAtivoMonitorado servicoAtivoMonitorado;
 
-    /**
-     * Normaliza e adiciona o ativo na fila em memória para processamento posterior.
-     */
-    public void registrarAtivo(String codigoAtivo) {
-        if (codigoAtivo == null || codigoAtivo.isBlank()) {
-            return;
-        }
-        String ativoNormalizado = codigoAtivo.trim().toUpperCase();
-        filaAtivos.add(ativoNormalizado);
-        log.debug("{} - Ativo registrado na fila: {}", AGENDADOR, ativoNormalizado);
-    }
+    @Scheduled(fixedDelay = 5000)
+    public void processarAtivosMonitorados() {
+        List<AtivoMonitoradoEntity> ativosMonitorados = servicoAtivoMonitorado.listarAtivosParaMonitorar();
 
-    /**
-     * Processa periodicamente os ativos registrados.
-     */
-    @Scheduled(fixedDelay = 3000)
-    public void processarAtivos() {
-        log.info("{} - Iniciando processamento em lote", AGENDADOR);
-        List<String> ativos = new ArrayList<>();
-        String codigoAtivo;
-
-        while ((codigoAtivo = filaAtivos.poll()) != null) {
-            ativos.add(codigoAtivo);
-        }
-
-        if (ativos.isEmpty()) {
-            log.debug("{} - Nenhuma acao encontrada na fila", AGENDADOR);
+        if (ativosMonitorados.isEmpty()) {
+            log.debug("{} - Nenhum ativo monitorado", AGENDADOR);
             return;
         }
 
-        log.info("{} - Total de acoes para processar: {}", AGENDADOR, ativos.size());
-        for (String ativo : ativos) {
+        for (AtivoMonitoradoEntity entidade : ativosMonitorados) {
+            if (!estaDevido(entidade)) {
+                continue;
+            }
+
             try {
-                log.info("{} - Processando ativo: {}", AGENDADOR, ativo);
-                servicoAtivo.processar(ativo);
-                log.info("{} - Ativo processado com sucesso: {}", AGENDADOR, ativo);
+                log.info("{} - Processando ativo monitorado: {} ({})", AGENDADOR, entidade.getSimbolo(), entidade.getTipoColeta());
+                if (entidade.getTipoColeta() == TipoColeta.COTACAO_E_HISTORICO) {
+                    servicoAtivo.processarRobusto(entidade.getSimbolo());
+                } else {
+                    servicoAtivo.processar(entidade.getSimbolo());
+                }
+                servicoAtivoMonitorado.marcarProcessado(entidade);
+                log.info("{} - Ativo monitorado processado com sucesso: {}", AGENDADOR, entidade.getSimbolo());
             } catch (Exception e) {
-                log.error("{} - Erro ao processar ativo: {}", AGENDADOR, ativo, e);
+                log.error("{} - Erro ao processar ativo monitorado: {}", AGENDADOR, entidade.getSimbolo(), e);
             }
         }
+    }
 
-        log.info("{} - Processamento concluido", AGENDADOR);
+    private boolean estaDevido(AtivoMonitoradoEntity entidade) {
+        if (entidade.getAtualizadoEm() == null) {
+            return true;
+        }
+        LocalDateTime proximoProcessamento = entidade.getAtualizadoEm().plusSeconds(entidade.getIntervaloSegundos());
+        return LocalDateTime.now().isAfter(proximoProcessamento);
     }
 }
