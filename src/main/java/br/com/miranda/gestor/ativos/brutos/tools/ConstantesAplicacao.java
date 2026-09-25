@@ -13,4 +13,5 @@ public final class ConstantesAplicacao {
     public static final String SERVICO = "(SERVICO)";
     public static final String CONTROLADOR = "(CONTROLADOR)";
     public static final String MAIN = "(MAIN)";
+    public static final String CONFIG_CORS = "(CONFIG-CORS)";
 }

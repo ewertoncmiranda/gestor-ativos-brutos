@@ -316,6 +316,7 @@ Erros tratados usam o formato:
 | `AWS_SQS_HISTORICAL_SERIES_QUEUE_URL` | `http://localstack:4566/000000000000/sqs-registrar-series-historicas` | Fila de séries históricas. |
 | `AWS_ACCESS_KEY_ID` | `teste` | Declarada nas properties, mas ignorada pelo cliente SQS atual. |
 | `AWS_SECRET_ACCESS_KEY` | `teste` | Declarada nas properties, mas ignorada pelo cliente SQS atual. |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:8080,http://localhost:5173,http://localhost:3000` | Origens liberadas em `ConfigCors` para todas as rotas (`/**`). Lista separada por vírgula. |
 
 Exemplo:
 
@@ -377,4 +378,5 @@ SPRING_PROFILES_ACTIVE=dev BRAPI_API_KEY='<sua-chave-brapi>' \
 - O cliente BRAPI não configura timeouts e as retentativas SQS não têm backoff.
 - O scheduler não persiste, não deduplica e não repete os ativos registrados.
 - Não há autenticação ou autorização nas rotas da aplicação.
+- CORS libera todos os métodos e headers para as origens configuradas em `CORS_ALLOWED_ORIGINS`; não usa `allowCredentials`, então o padrão serve para desenvolvimento local do front, mas a lista de origens deve ser revisada antes de qualquer deploy real.
 - A suíte atual contém apenas um teste trivial, sem cobertura dos contratos ou integrações.
