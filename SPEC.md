@@ -47,7 +47,7 @@ Fluxo SDD: `Spec → Plano → Tarefas → Implementação → Verificação →
 | POST | `/ativos/registrar/{ativo}` | Persiste o ativo em `ativo_monitorado` (upsert por símbolo, `tipo_coleta=COTACAO_E_HISTORICO`, `intervalo_segundos=30`) e devolve 202 | Dispara `processarRobusto()` imediatamente (falha aqui é só logada — o registro já foi persistido, o agendador tenta de novo sozinho); depois, `AgendadorAtivos` reprocessa a cada `intervalo_segundos` até o ativo ser desativado |
 | GET | `/ativos/registrados` | Lista os ativos cadastrados em `ativo_monitorado`, ordenados por símbolo (`AtivoMonitoradoDTO[]`) | — |
 | GET | `/analises/{simbolo}/analise` | Consolida todo o histórico de `insight_acao` e devolve a decisão deterministica (média) | — |
-| GET | `/analises/{simbolo}/fundamentos` | Devolve o `detalhes_json` **bruto** (não mediado) da análise mais recente do símbolo — os números e classificações exatos de um único ciclo (`FundamentosAtivoDTO`) | — |
+| GET | `/analises/{simbolo}/fundamentos` | Devolve o `detalhes_json` **bruto** (não mediado) da análise mais recente do símbolo — os números e classificações exatos de um único ciclo, mais o perfil de operação e riscos derivados (`FundamentosAtivoDTO`, ver `PerfilOperacaoClassificador` na seção 3.2) | — |
 | GET | `/api/v2/stocks/historical` | Proxy para a BRAPI (`symbols`, `range`, `interval`, `startDate`, `endDate`, `sortOrder`) | — |
 | GET | `/actuator/health`, `/actuator/prometheus` | Saúde e métricas | — |
 
@@ -76,6 +76,7 @@ BRAPI `quote` → `AtivoBrapiDTO` → ModelMapper → `Ativo` → JSON → SQS `
 1. `ServicoAnaliseAcao.buscarUltimaPorSimbolo()` busca só a linha mais recente de `insight_acao` (`findFirstBySimboloOrderByDataAnaliseDesc`), sem consolidar/mediar.
 2. `FundamentosAtivoDTO.de()` devolve o `detalhes_json` dessa linha como está — o payload v2.0 completo que o `gerar-insights` gravou naquele ciclo (cenários de preço justo Graham, classificações de P/L/earnings yield, contexto técnico do dia, sinal técnico de série quando houver histórico, insights e fatores de decisão). O Java não reconstrói esses campos em DTOs próprios; só repassa o `JsonNode` como veio — evita duplicar/desatualizar o schema do Python no Java.
 3. Sem registro para o símbolo: devolve 200 com só o campo `simbolo` preenchido (mesmo padrão de "sem dado" de `/analise`).
+4. `PerfilOperacaoClassificador.classificar(detalhes)` (2026-09-25) deriva, do mesmo `JsonNode`, 4 campos extras direto em `FundamentosAtivoDTO`: `perfisAplicaveis` (lista não exclusiva — `DAY_TRADE` se `sinal_momentum != NEUTRO_TECNICO`, `SWING_REVERSAO` se `sinal_reversao != NEUTRO_TECNICO`, `LONGO_PRAZO` se margem conservadora ≥20% e earnings yield Atrativo/Razoável), `riscoCompraAgora`/`riscoVendaAgora` (BAIXO/MEDIO/ALTO por combinação de `zona_52w` + margem base) e `confluenciaSinais` (contagem de concordância entre recomendação fundamentalista, `sinal_momentum` e `sinal_reversao` — **deliberadamente não é uma probabilidade estatística de sucesso**: isso exigiria acompanhar o resultado futuro de recomendações passadas, mecanismo que não existe hoje). Navegação null-safe: histórico com menos de 20 candles não gera `contexto_tecnico_serie`, e o classificador degrada sem erro (`perfisAplicaveis` fica sem `DAY_TRADE`/`SWING_REVERSAO`).
 
 ---
 
@@ -98,7 +99,7 @@ Java 21 (compilado com Maven em imagem Temurin 24), Spring Boot 3.3.0, Spring We
 | `external/http` | `ClienteBrApi` (RestTemplate; token no header `Authorization`) |
 | `external` | `Ativo` (modelo), `AnaliseAcaoEntity` (JPA sobre `insight_acao`), `AtivoMonitoradoEntity` (JPA sobre `ativo_monitorado`), `TipoColeta` (enum), DTOs |
 | `repository` | `RepositorioAnaliseAcao` (JPA + query nativa), `RepositorioAtivoMonitorado` (JPA) |
-| `tools` | `ConsolidadorAnaliseAcao`, `MontadorDecisaoDeterministica`, `ConversorJson`, `ConversorJsonNode`, constantes |
+| `tools` | `ConsolidadorAnaliseAcao`, `MontadorDecisaoDeterministica`, `PerfilOperacaoClassificador` (2026-09-25 — perfil de operação e riscos de compra/venda a partir de um único ciclo), `ConversorJson`, `ConversorJsonNode`, constantes |
 | `exceptions` | Hierarquia `ExcecaoAplicacao` + `TratadorGlobalExcecoes` (`@RestControllerAdvice`) |
 | `config` | Beans de SQS e `ConfigProperties` |
 

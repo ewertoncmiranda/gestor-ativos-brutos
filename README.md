@@ -51,7 +51,7 @@ WebFlux e OpenFeign estão declarados no `pom.xml`, mas não são usados pela im
 | `POST` | `/ativos/registrar/{ativo}` | `AtivoController.registrarAtivo` | `202`, sem corpo | Normaliza o símbolo e faz upsert em `ativo_monitorado` (`COTACAO_E_HISTORICO`, 30s); dispara `processarRobusto` na hora (falha aqui é só logada); o agendador reprocessa o ativo automaticamente a cada 30s a partir daí. |
 | `GET` | `/ativos/registrados` | `AtivoController.listarRegistrados` | `200` com `AtivoMonitoradoDTO[]` | Lista a carteira monitorada, ordenada por símbolo. |
 | `GET` | `/analises/{simbolo}/analise` | `AnaliseAcaoController.buscarPorSimbolo` | `200` com `RespostaAnaliseIaDTO` | Lê todo o histórico do símbolo em `insight_acao`, consolida os dados e aplica regras determinísticas. |
-| `GET` | `/analises/{simbolo}/fundamentos` | `AnaliseAcaoController.buscarFundamentos` | `200` com `FundamentosAtivoDTO` | Devolve o `detalhes_json` bruto do ciclo mais recente (sem consolidar/mediar) — os números exatos de valuation Graham, classificações e contexto técnico daquela análise. |
+| `GET` | `/analises/{simbolo}/fundamentos` | `AnaliseAcaoController.buscarFundamentos` | `200` com `FundamentosAtivoDTO` | Devolve o `detalhes_json` bruto do ciclo mais recente (sem consolidar/mediar) — os números exatos de valuation Graham, classificações e contexto técnico daquela análise, mais o perfil de operação (day trade / swing-reversão / longo prazo, não exclusivos) e os riscos de comprar/vender agora, calculados por `PerfilOperacaoClassificador`. |
 | `GET` | `/api/v2/stocks/historical` | `HistoricoAcoesController.buscarHistorico` | `200` com `RespostaHistoricoAcoesDTO` | Proxy autenticado para o histórico da BRAPI; não publica em SQS. |
 | `GET` | `/actuator` | Spring Boot Actuator | `200` com links dos endpoints expostos | Disponível conforme a exposição do perfil ativo. |
 | `GET` | `/actuator/health` | Spring Boot Actuator | `200` ou `503` com o estado de saúde | No perfil `dev`, inclui detalhes de saúde. |
@@ -416,6 +416,7 @@ SPRING_PROFILES_ACTIVE=dev BRAPI_API_KEY='<sua-chave-brapi>' \
 - O cliente BRAPI não configura timeouts e as retentativas SQS não têm backoff.
 - O scheduler roda 24/7, sem restringir ao horário de pregão; ativos que falham na coleta (ex.: BRAPI fora do ar) são retentados a cada 5s, sem backoff.
 - O range do histórico usado no monitoramento (`brapi.historico.range`, padrão `3mo`) é o maior aceito pelo plano Free da BRAPI para tickers fora da lista de demonstração deles; para série de 1 ano é preciso um plano pago e ajustar essa property.
+- `PerfilOperacaoClassificador` (perfil de operação, riscos de compra/venda, confluência de sinais) é 100% determinístico sobre um único ciclo; não mede taxa de acerto real — isso exigiria acompanhar o resultado futuro de recomendações passadas, o que não existe hoje.
 - Não há autenticação ou autorização nas rotas da aplicação.
 - CORS libera todos os métodos e headers para as origens configuradas em `CORS_ALLOWED_ORIGINS`; não usa `allowCredentials`, então o padrão serve para desenvolvimento local do front, mas a lista de origens deve ser revisada antes de qualquer deploy real.
 - A suíte atual contém apenas um teste trivial, sem cobertura dos contratos ou integrações.

@@ -7,6 +7,7 @@ import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaAnaliseIaDTO;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAnaliseAcao;
 import br.com.miranda.gestor.ativos.brutos.tools.ConsolidadorAnaliseAcao;
 import br.com.miranda.gestor.ativos.brutos.tools.MontadorDecisaoDeterministica;
+import br.com.miranda.gestor.ativos.brutos.tools.PerfilOperacaoClassificador;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -54,8 +55,15 @@ public class AnaliseAcaoController {
     @GetMapping("/{simbolo}/fundamentos")
     public FundamentosAtivoDTO buscarFundamentos(@PathVariable String simbolo) {
         log.info("{}-Buscando fundamentos da ultima analise para simbolo: {}", BRAPI_SERVICE, simbolo);
-        return servicoAnaliseAcao.buscarUltimaPorSimbolo(simbolo)
+        FundamentosAtivoDTO dto = servicoAnaliseAcao.buscarUltimaPorSimbolo(simbolo)
                 .map(FundamentosAtivoDTO::de)
                 .orElseGet(() -> FundamentosAtivoDTO.vazio(simbolo));
+
+        PerfilOperacaoClassificador.Resultado perfil = PerfilOperacaoClassificador.classificar(dto.getDetalhes());
+        dto.setPerfisAplicaveis(perfil.perfisAplicaveis());
+        dto.setRiscoCompraAgora(perfil.riscoCompraAgora());
+        dto.setRiscoVendaAgora(perfil.riscoVendaAgora());
+        dto.setConfluenciaSinais(perfil.confluenciaSinais());
+        return dto;
     }
 }
