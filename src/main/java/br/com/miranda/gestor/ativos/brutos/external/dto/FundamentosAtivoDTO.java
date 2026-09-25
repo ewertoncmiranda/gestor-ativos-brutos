@@ -37,6 +37,13 @@ public class FundamentosAtivoDTO {
     private String riscoVendaAgora;
     private ConfluenciaSinaisDTO confluenciaSinais;
 
+    /**
+     * Setor, indústria e demais dados de perfil da empresa, buscados ao vivo na
+     * BRAPI (endpoint /v2/stocks/profile) - não vêm do gerar-insights, mas
+     * complementam o retrato do ativo. Fica null se a consulta falhar.
+     */
+    private PerfilEmpresaBrapiDTO perfilEmpresa;
+
     public static FundamentosAtivoDTO de(AnaliseAcaoEntity entidade) {
         return FundamentosAtivoDTO.builder()
                 .simbolo(entidade.getSimbolo())

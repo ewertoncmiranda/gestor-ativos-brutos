@@ -5,6 +5,7 @@ import br.com.miranda.gestor.ativos.brutos.external.dto.AnaliseConsolidadaDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.FundamentosAtivoDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaAnaliseIaDTO;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAnaliseAcao;
+import br.com.miranda.gestor.ativos.brutos.service.ServicoAtivo;
 import br.com.miranda.gestor.ativos.brutos.tools.ConsolidadorAnaliseAcao;
 import br.com.miranda.gestor.ativos.brutos.tools.MontadorDecisaoDeterministica;
 import br.com.miranda.gestor.ativos.brutos.tools.PerfilOperacaoClassificador;
@@ -27,6 +28,7 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.BRAP
 public class AnaliseAcaoController {
 
     private final ServicoAnaliseAcao servicoAnaliseAcao;
+    private final ServicoAtivo servicoAtivo;
 
     /**
      * Consolida as análises persistidas de um ativo e deriva a decisão por regras deterministicas.
@@ -64,6 +66,7 @@ public class AnaliseAcaoController {
         dto.setRiscoCompraAgora(perfil.riscoCompraAgora());
         dto.setRiscoVendaAgora(perfil.riscoVendaAgora());
         dto.setConfluenciaSinais(perfil.confluenciaSinais());
+        servicoAtivo.buscarPerfilEmpresa(simbolo).ifPresent(dto::setPerfilEmpresa);
         return dto;
     }
 }

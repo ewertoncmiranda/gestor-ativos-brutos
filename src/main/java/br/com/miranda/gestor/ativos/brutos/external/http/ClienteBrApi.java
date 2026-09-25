@@ -4,6 +4,7 @@ import br.com.miranda.gestor.ativos.brutos.exceptions.ExcecaoIntegracaoBrapi;
 import br.com.miranda.gestor.ativos.brutos.external.dto.ConsultaHistoricoAcoesDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaBrapiDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaHistoricoAcoesDTO;
+import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaPerfilBrapiDTO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ public class ClienteBrApi {
     private static final String BRAPI_BASE_URL = "https://brapi.dev";
     private static final String CAMINHO_COTACAO = "/api/quote/{symbol}";
     private static final String CAMINHO_HISTORICO_ACOES = "/api/v2/stocks/historical";
+    private static final String CAMINHO_PERFIL_EMPRESA = "/api/v2/stocks/profile";
 
     @Value("${brapi.api.key}")
     private String apiKey;
@@ -79,6 +81,25 @@ public class ClienteBrApi {
         RespostaHistoricoAcoesDTO resposta = executarGet(url, RespostaHistoricoAcoesDTO.class, "stocks/historical");
         int totalResultados = resposta == null || resposta.results() == null ? 0 : resposta.results().size();
         log.info("{}-Historico OHLCV parseado com sucesso. Resultados: {}", BRAPI_SERVICE, totalResultados);
+        return resposta;
+    }
+
+    /**
+     * Consulta o perfil da empresa (setor, industria, resumo do negocio) na BRAPI.
+     * Endpoint gratis no plano atual, inclusive pra tickers reais (nao so os de
+     * demonstracao) - validado em 2026-09-25 com WEGE3.
+     */
+    public RespostaPerfilBrapiDTO consultarPerfilEmpresa(String simbolo) {
+        log.info("{}-Iniciando consulta de perfil de empresa para simbolo: {}", BRAPI_SERVICE, simbolo);
+
+        String url = UriComponentsBuilder.fromHttpUrl(BRAPI_BASE_URL)
+                .path(CAMINHO_PERFIL_EMPRESA)
+                .queryParam("symbols", simbolo)
+                .toUriString();
+
+        RespostaPerfilBrapiDTO resposta = executarGet(url, RespostaPerfilBrapiDTO.class, "profile/" + simbolo);
+        int totalResultados = resposta == null || resposta.getResults() == null ? 0 : resposta.getResults().size();
+        log.info("{}-Perfil de empresa parseado com sucesso. Resultados: {}", BRAPI_SERVICE, totalResultados);
         return resposta;
     }
 
