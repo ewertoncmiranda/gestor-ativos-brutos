@@ -20,7 +20,7 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.CONT
 @RestController
 @RequestMapping("/api/v2/stocks/historical")
 @RequiredArgsConstructor
-public class ControladorHistoricoAcoes {
+public class HistoricoAcoesController {
 
     private final ClienteBrApi clienteBrApi;
 

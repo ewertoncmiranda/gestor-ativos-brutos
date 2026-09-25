@@ -16,12 +16,12 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.CONT
 @Slf4j
 @RestController
 @RequestMapping("/ativos")
-public class ControladorAtivo {
+public class AtivoController {
 
     private final ServicoAtivo servicoAtivo;
     private final AgendadorAtivos agendadorAtivos;
 
-    public ControladorAtivo(ServicoAtivo servicoAtivo, AgendadorAtivos agendadorAtivos) {
+    public AtivoController(ServicoAtivo servicoAtivo, AgendadorAtivos agendadorAtivos) {
         this.servicoAtivo = servicoAtivo;
         this.agendadorAtivos = agendadorAtivos;
     }
@@ -34,6 +34,14 @@ public class ControladorAtivo {
         log.info("{}-Requisicao recebida para buscar ativo: {}", CONTROLADOR, ativo);
         Ativo ativoProcessado = servicoAtivo.buscarEProcessarAtivo(ativo);
         log.info("{}-Resposta preparada para ativo: {}", CONTROLADOR, ativo);
+        return ResponseEntity.ok(ativoProcessado);
+    }
+
+    @GetMapping("/robusto/{ativo}")
+    public ResponseEntity<Ativo> buscarPorSimboloComSerieHistorica(@PathVariable String ativo) {
+        log.info("{}-Requisicao robusta recebida para buscar ativo: {}", CONTROLADOR, ativo);
+        Ativo ativoProcessado = servicoAtivo.processarRobusto(ativo);
+        log.info("{}-Resposta robusta preparada para ativo: {}", CONTROLADOR, ativo);
         return ResponseEntity.ok(ativoProcessado);
     }
 
