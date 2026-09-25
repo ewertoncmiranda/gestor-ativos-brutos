@@ -4,6 +4,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -70,5 +73,21 @@ public record RespostaHistoricoAcoesDTO(
             @JsonProperty("adjustedClose")
             BigDecimal adjustedClose
     ) {
+        private static final DateTimeFormatter FORMATADOR_DATA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        private static final ZoneId ZONA_BRASIL = ZoneId.of("America/Sao_Paulo");
+
+        /**
+         * Retorna a data do pregao no formato brasileiro, derivada do timestamp Unix em segundos.
+         */
+        @JsonProperty("dataFormatada")
+        public String dataFormatada() {
+            if (date == null) {
+                return null;
+            }
+
+            return Instant.ofEpochSecond(date)
+                    .atZone(ZONA_BRASIL)
+                    .format(FORMATADOR_DATA);
+        }
     }
 }

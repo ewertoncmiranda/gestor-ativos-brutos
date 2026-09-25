@@ -17,6 +17,9 @@ public class ConfigProperties {
     @Value("${aws.sqs.queue.url:http://localstack:4566/000000000000/tratar-ativos}")
     private String awsSqsQueueUrl;
 
+    @Value("${aws.sqs.historical-series.queue.url:http://localstack:4566/000000000000/sqs-registrar-series-historicas}")
+    private String awsSqsHistoricalSeriesQueueUrl;
+
     @Value("${aws.accessKeyId:test}")
     private String awsAccessKeyId;
 

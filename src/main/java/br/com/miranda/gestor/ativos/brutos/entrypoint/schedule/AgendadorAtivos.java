@@ -19,8 +19,6 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.AGEN
 @AllArgsConstructor
 public class AgendadorAtivos {
 
-    private static final long INTERVALO_GEMINI_FREE_TIER_MILLIS = 4_000L;
-
     private final ServicoAtivo servicoAtivo;
     private final ConcurrentLinkedQueue<String> filaAtivos = new ConcurrentLinkedQueue<>();
 
@@ -37,9 +35,9 @@ public class AgendadorAtivos {
     }
 
     /**
-     * Processa periodicamente os ativos registrados, respeitando a janela do plano gratuito do Gemini.
+     * Processa periodicamente os ativos registrados.
      */
-    @Scheduled(fixedDelay = 9000)
+    @Scheduled(fixedDelay = 3000)
     public void processarAtivos() {
         log.info("{} - Iniciando processamento em lote", AGENDADOR);
         List<String> ativos = new ArrayList<>();
@@ -60,21 +58,11 @@ public class AgendadorAtivos {
                 log.info("{} - Processando ativo: {}", AGENDADOR, ativo);
                 servicoAtivo.processar(ativo);
                 log.info("{} - Ativo processado com sucesso: {}", AGENDADOR, ativo);
-                aguardarJanelaFreeTier();
             } catch (Exception e) {
                 log.error("{} - Erro ao processar ativo: {}", AGENDADOR, ativo, e);
             }
         }
 
         log.info("{} - Processamento concluido", AGENDADOR);
-    }
-
-    private void aguardarJanelaFreeTier() {
-        try {
-            Thread.sleep(INTERVALO_GEMINI_FREE_TIER_MILLIS);
-        } catch (InterruptedException interruptedException) {
-            Thread.currentThread().interrupt();
-            log.warn("{} - Processamento interrompido durante controle de rate limit", AGENDADOR, interruptedException);
-        }
     }
 }

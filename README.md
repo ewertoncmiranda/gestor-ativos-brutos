@@ -1,21 +1,19 @@
 # Gestor de Ativos Brutos
 
-Aplicacao backend em **Java 21** com **Spring Boot** para consulta, processamento e armazenamento de dados de ativos B3. A aplicacao integra BRAPI, SQS, S3, MySQL e Gemini para coletar dados brutos, disparar processamento assincrono e gerar analises quantitativas.
+Aplicacao backend em **Java 21** com **Spring Boot** para consulta, processamento e armazenamento de dados de ativos B3. A aplicacao integra BRAPI, SQS e MySQL para coletar dados brutos, disparar processamento assincrono e gerar analises quantitativas.
 
 ## Responsabilidades
 
 - Consultar dados de ativos e series historicas OHLCV na BRAPI.
 - Publicar payloads brutos de ativos em fila SQS.
 - Consolidar analises historicas persistidas em MySQL.
-- Gerar interpretacao estruturada com Gemini.
-- Salvar e disponibilizar arquivos de analise em S3.
+- Derivar a decisao consolidada (sentimento, risco, recomendacao) por regras deterministicas sobre os indicadores persistidos.
 
 ## Principais tecnologias
 
 - **Spring Boot / Spring Web** para API HTTP.
 - **Spring Data JPA / Hibernate** para persistencia MySQL.
-- **AWS SDK SQS e S3** para mensageria e armazenamento.
-- **Gemini SDK** para geracao de analise por IA.
+- **AWS SDK SQS** para mensageria.
 - **Lombok** para reduzir boilerplate.
 - **Micrometer / Prometheus** para metricas.
 
@@ -26,14 +24,11 @@ Aplicacao backend em **Java 21** com **Spring Boot** para consulta, processament
 | `SPRING_PROFILES_ACTIVE` | `dev` | Perfil ativo do Spring. |
 | `SERVER_PORT` | `9090` | Porta HTTP da aplicacao. |
 | `BRAPI_API_KEY` | - | Chave de acesso da BRAPI. |
-| `GEMINI_API_KEY` | - | Chave de acesso do Gemini. |
 | `DB_URL` | `jdbc:mysql://mysql:3306/minha_base?...` | URL JDBC do MySQL. |
 | `DB_USERNAME` | `spring` | Usuario do MySQL. |
 | `DB_PASSWORD` | `spring123` | Senha do MySQL. |
 | `AWS_SQS_ENDPOINT_BASE` | `http://localstack:4566` | Endpoint SQS ou LocalStack. |
 | `AWS_SQS_QUEUE_URL` | `http://localstack:4566/000000000000/tratar-ativos` | Fila SQS de processamento. |
-| `AWS_S3_ENDPOINT_BASE` | `http://localstack:4566` | Endpoint S3 ou LocalStack. |
-| `AWS_S3_BUCKET_NAME` | `bucket-salvar-insights` | Bucket de arquivos de analise. |
 | `AWS_ACCESS_KEY_ID` | `teste` | Access key AWS. |
 | `AWS_SECRET_ACCESS_KEY` | `teste` | Secret key AWS. |
 
@@ -67,36 +62,12 @@ curl -X POST "http://localhost:9090/ativos/registrar/VALE3"
 
 `GET /analises/{simbolo}/analise`
 
-Busca analises persistidas no MySQL, consolida os sinais e solicita ao Gemini uma resposta estruturada com sentimento, forca do sinal, risco, confianca, resumo, analise tecnica, analise fundamentalista, possivel cenario e recomendacao.
+Busca analises persistidas no MySQL, consolida os sinais e deriva por regras deterministicas uma resposta estruturada com sentimento, forca do sinal, risco, confianca, resumo, analise tecnica, analise fundamentalista, possivel cenario e recomendacao.
 
 Exemplo:
 
 ```bash
 curl "http://localhost:9090/analises/PETR4/analise"
-```
-
-### Listar arquivos de analise
-
-`GET /s3/analises`
-
-Lista arquivos de analise armazenados no bucket S3. O parametro `nome` e opcional.
-
-Exemplo:
-
-```bash
-curl "http://localhost:9090/s3/analises?nome=PETR4"
-```
-
-### Baixar arquivo de analise
-
-`GET /s3/analises/download?key={chave}`
-
-Baixa o arquivo de analise usando a chave retornada na listagem.
-
-Exemplo:
-
-```bash
-curl -OJ "http://localhost:9090/s3/analises/download?key=petr4/analises/10:30:00.json"
 ```
 
 ### Historico OHLCV de acoes B3
@@ -125,12 +96,12 @@ curl "http://localhost:9090/api/v2/stocks/historical?symbols=PETR4,VALE3&range=1
 ## Estrutura principal
 
 - `ControladorAtivo`: endpoints de consulta e registro de ativos.
-- `ControladorAnaliseAcao`: endpoint de analise consolidada por IA.
-- `ControladorArquivoAnalise`: endpoints de listagem e download no S3.
+- `ControladorAnaliseAcao`: endpoint de analise consolidada por regras deterministicas.
 - `ControladorHistoricoAcoes`: endpoint de historico OHLCV.
 - `ClienteBrApi`: cliente HTTP centralizado para consultas BRAPI.
-- `ServicoAtivo`: orquestra BRAPI, SQS, consolidacao, Gemini e S3.
+- `ServicoAtivo`: orquestra BRAPI e publicacao na fila SQS.
 - `AgendadorAtivos`: processa periodicamente ativos registrados.
+- `MontadorDecisaoDeterministica`: deriva sentimento/risco/recomendacao a partir dos indicadores consolidados em MySQL.
 
 ## Execucao local
 
@@ -144,12 +115,9 @@ DB_USERNAME=spring
 DB_PASSWORD=spring123
 AWS_SQS_ENDPOINT_BASE=http://localstack:4566
 AWS_SQS_QUEUE_URL=http://localstack:4566/000000000000/tratar-ativos
-AWS_S3_ENDPOINT_BASE=http://localstack:4566
-AWS_S3_BUCKET_NAME=bucket-salvar-insights
 AWS_ACCESS_KEY_ID=test
 AWS_SECRET_ACCESS_KEY=test
 BRAPI_API_KEY=<sua-chave-brapi>
-GEMINI_API_KEY=<sua-chave-gemini>
 ```
 
 Build:
