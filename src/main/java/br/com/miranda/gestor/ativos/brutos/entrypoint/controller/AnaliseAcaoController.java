@@ -2,6 +2,7 @@ package br.com.miranda.gestor.ativos.brutos.entrypoint.controller;
 
 import br.com.miranda.gestor.ativos.brutos.external.AnaliseAcaoEntity;
 import br.com.miranda.gestor.ativos.brutos.external.dto.AnaliseConsolidadaDTO;
+import br.com.miranda.gestor.ativos.brutos.external.dto.FundamentosAtivoDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaAnaliseIaDTO;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAnaliseAcao;
 import br.com.miranda.gestor.ativos.brutos.tools.ConsolidadorAnaliseAcao;
@@ -43,5 +44,18 @@ public class AnaliseAcaoController {
 
         AnaliseConsolidadaDTO consolidado = ConsolidadorAnaliseAcao.consolidar(analises);
         return MontadorDecisaoDeterministica.montar(consolidado);
+    }
+
+    /**
+     * Devolve o detalhes_json bruto da análise mais recente do símbolo - os números e
+     * classificações exatos calculados naquele ciclo pelo gerar-insights, sem a
+     * consolidação/média aplicada por buscarPorSimbolo. Usado pela aba "Como funciona".
+     */
+    @GetMapping("/{simbolo}/fundamentos")
+    public FundamentosAtivoDTO buscarFundamentos(@PathVariable String simbolo) {
+        log.info("{}-Buscando fundamentos da ultima analise para simbolo: {}", BRAPI_SERVICE, simbolo);
+        return servicoAnaliseAcao.buscarUltimaPorSimbolo(simbolo)
+                .map(FundamentosAtivoDTO::de)
+                .orElseGet(() -> FundamentosAtivoDTO.vazio(simbolo));
     }
 }

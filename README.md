@@ -51,6 +51,7 @@ WebFlux e OpenFeign estão declarados no `pom.xml`, mas não são usados pela im
 | `POST` | `/ativos/registrar/{ativo}` | `AtivoController.registrarAtivo` | `202`, sem corpo | Normaliza o símbolo e faz upsert em `ativo_monitorado` (`COTACAO_E_HISTORICO`, 30s); dispara `processarRobusto` na hora (falha aqui é só logada); o agendador reprocessa o ativo automaticamente a cada 30s a partir daí. |
 | `GET` | `/ativos/registrados` | `AtivoController.listarRegistrados` | `200` com `AtivoMonitoradoDTO[]` | Lista a carteira monitorada, ordenada por símbolo. |
 | `GET` | `/analises/{simbolo}/analise` | `AnaliseAcaoController.buscarPorSimbolo` | `200` com `RespostaAnaliseIaDTO` | Lê todo o histórico do símbolo em `insight_acao`, consolida os dados e aplica regras determinísticas. |
+| `GET` | `/analises/{simbolo}/fundamentos` | `AnaliseAcaoController.buscarFundamentos` | `200` com `FundamentosAtivoDTO` | Devolve o `detalhes_json` bruto do ciclo mais recente (sem consolidar/mediar) — os números exatos de valuation Graham, classificações e contexto técnico daquela análise. |
 | `GET` | `/api/v2/stocks/historical` | `HistoricoAcoesController.buscarHistorico` | `200` com `RespostaHistoricoAcoesDTO` | Proxy autenticado para o histórico da BRAPI; não publica em SQS. |
 | `GET` | `/actuator` | Spring Boot Actuator | `200` com links dos endpoints expostos | Disponível conforme a exposição do perfil ativo. |
 | `GET` | `/actuator/health` | Spring Boot Actuator | `200` ou `503` com o estado de saúde | No perfil `dev`, inclui detalhes de saúde. |

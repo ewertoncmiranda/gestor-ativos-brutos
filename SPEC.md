@@ -43,10 +43,11 @@ Fluxo SDD: `Spec → Plano → Tarefas → Implementação → Verificação →
 | Método | Rota | Efeito | Efeitos colaterais |
 |---|---|---|---|
 | GET | `/ativos/{ativo}` | Consulta a cotação na BRAPI e devolve o `Ativo` | **Publica** na fila `tratar-ativos` (um GET com efeito colateral, ver `ISS-09`) |
-| GET | `/ativos/robusto/{ativo}` | Cotação + série de 1 ano (`1y`/`1d`) | Publica em `tratar-ativos` **e** em `sqs-registrar-series-historicas` |
+| GET | `/ativos/robusto/{ativo}` | Cotação + série (`brapi.historico.range`, padrão `3mo`/`1d`; ver `ISS-18`) | Publica em `tratar-ativos` **e** em `sqs-registrar-series-historicas` |
 | POST | `/ativos/registrar/{ativo}` | Persiste o ativo em `ativo_monitorado` (upsert por símbolo, `tipo_coleta=COTACAO_E_HISTORICO`, `intervalo_segundos=30`) e devolve 202 | Dispara `processarRobusto()` imediatamente (falha aqui é só logada — o registro já foi persistido, o agendador tenta de novo sozinho); depois, `AgendadorAtivos` reprocessa a cada `intervalo_segundos` até o ativo ser desativado |
 | GET | `/ativos/registrados` | Lista os ativos cadastrados em `ativo_monitorado`, ordenados por símbolo (`AtivoMonitoradoDTO[]`) | — |
-| GET | `/analises/{simbolo}/analise` | Consolida todo o histórico de `insight_acao` e devolve a decisão deterministica | — |
+| GET | `/analises/{simbolo}/analise` | Consolida todo o histórico de `insight_acao` e devolve a decisão deterministica (média) | — |
+| GET | `/analises/{simbolo}/fundamentos` | Devolve o `detalhes_json` **bruto** (não mediado) da análise mais recente do símbolo — os números e classificações exatos de um único ciclo (`FundamentosAtivoDTO`) | — |
 | GET | `/api/v2/stocks/historical` | Proxy para a BRAPI (`symbols`, `range`, `interval`, `startDate`, `endDate`, `sortOrder`) | — |
 | GET | `/actuator/health`, `/actuator/prometheus` | Saúde e métricas | — |
 
@@ -70,6 +71,11 @@ BRAPI `quote` → `AtivoBrapiDTO` → ModelMapper → `Ativo` → JSON → SQS `
 1. Lê `insight_acao` do símbolo (todo o histórico).
 2. Consolida (sinal predominante, % de venda, média da margem, médias dos campos numéricos de `detalhes_json`) em `ConsolidadorAnaliseAcao`.
 3. `MontadorDecisaoDeterministica` deriva sentimento/força do sinal/risco/confiança/recomendação por regras fixas — sem IA, sem S3.
+
+**Fluxo F — fundamentos de um único ciclo (`GET /analises/{simbolo}/fundamentos`, 2026-09-25)**
+1. `ServicoAnaliseAcao.buscarUltimaPorSimbolo()` busca só a linha mais recente de `insight_acao` (`findFirstBySimboloOrderByDataAnaliseDesc`), sem consolidar/mediar.
+2. `FundamentosAtivoDTO.de()` devolve o `detalhes_json` dessa linha como está — o payload v2.0 completo que o `gerar-insights` gravou naquele ciclo (cenários de preço justo Graham, classificações de P/L/earnings yield, contexto técnico do dia, sinal técnico de série quando houver histórico, insights e fatores de decisão). O Java não reconstrói esses campos em DTOs próprios; só repassa o `JsonNode` como veio — evita duplicar/desatualizar o schema do Python no Java.
+3. Sem registro para o símbolo: devolve 200 com só o campo `simbolo` preenchido (mesmo padrão de "sem dado" de `/analise`).
 
 ---
 
@@ -176,6 +182,7 @@ OBSOLETO — descrevia o prompt enviado ao Gemini (removido). O prompt pedia "ri
 | REQ-05 | Salvar, listar e baixar análises no S3 | REMOVIDO (2026-09-25) |
 | REQ-06 | Agendar coleta **recorrente** de uma carteira de ativos | IMPLEMENTADO (`TASK-20`, 2026-09-25 — cadastro persistido + reprocessamento a cada 30s; não há ainda restrição ao horário de pregão) |
 | REQ-07 | Gerar a análise de IA somente depois que o insight do dia estiver disponível | PLANEJADO (`TASK-21`) |
+| REQ-08 | Expor o retrato bruto (não mediado) de um único ciclo de análise, para transparência de metodologia | IMPLEMENTADO (2026-09-25, `GET /analises/{simbolo}/fundamentos`) |
 
 Critérios de aceite de referência:
 - **REQ-02** — *Dado* que a BRAPI devolve PETR4, *quando* `GET /ativos/PETR4` é chamado, *então* uma mensagem com `symbol=PETR4` e `regularMarketPrice` numérico chega a `tratar-ativos`.
