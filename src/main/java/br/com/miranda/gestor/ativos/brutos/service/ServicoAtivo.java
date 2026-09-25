@@ -26,6 +26,12 @@ public class ServicoAtivo {
     @Value("${aws.sqs.historical-series.queue.url}")
     private String filaSeriesHistoricasUrl;
 
+    // "1y" so retorna 200 pros tickers de demonstracao da BRAPI (ex.: PETR4, MGLU3) sem
+    // token; com uma chave real (plano Free), a API rejeita range > 3mo com 400 INVALID_RANGE
+    // pra qualquer outro ticker. "3mo" e o maior intervalo aceito no plano Free.
+    @Value("${brapi.historico.range:3mo}")
+    private String rangeHistorico;
+
     public ServicoAtivo(
             ClienteBrApi clienteBrApi,
             PortaFilaMensagens filaMensagens
@@ -48,7 +54,7 @@ public class ServicoAtivo {
      */
     public Ativo processarRobusto(String codigoAtivo) {
         Ativo ativo = consultarAtivoAPI(codigoAtivo);
-        RespostaHistoricoAcoesDTO historico = consultarSerieAtivosAPI(new ConsultaHistoricoAcoesDTO(codigoAtivo, "1y", "1d", null, null, "asc"));
+        RespostaHistoricoAcoesDTO historico = consultarSerieAtivosAPI(new ConsultaHistoricoAcoesDTO(codigoAtivo, rangeHistorico, "1d", null, null, "asc"));
         publicarAtivoNaFila(ativo);
         publicarSerieHistoricaNaFila(historico);
         return ativo;
