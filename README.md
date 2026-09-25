@@ -414,6 +414,7 @@ SPRING_PROFILES_ACTIVE=dev BRAPI_API_KEY='<sua-chave-brapi>' \
 - A serialização para SQS cria um `ObjectMapper` próprio, sem módulos explícitos para tipos de data/hora.
 - O cliente BRAPI não configura timeouts e as retentativas SQS não têm backoff.
 - O scheduler roda 24/7, sem restringir ao horário de pregão; ativos que falham na coleta (ex.: BRAPI fora do ar) são retentados a cada 5s, sem backoff.
+- O range do histórico usado no monitoramento (`brapi.historico.range`, padrão `3mo`) é o maior aceito pelo plano Free da BRAPI para tickers fora da lista de demonstração deles; para série de 1 ano é preciso um plano pago e ajustar essa property.
 - Não há autenticação ou autorização nas rotas da aplicação.
 - CORS libera todos os métodos e headers para as origens configuradas em `CORS_ALLOWED_ORIGINS`; não usa `allowCredentials`, então o padrão serve para desenvolvimento local do front, mas a lista de origens deve ser revisada antes de qualquer deploy real.
 - A suíte atual contém apenas um teste trivial, sem cobertura dos contratos ou integrações.
