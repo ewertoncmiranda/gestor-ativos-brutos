@@ -6,25 +6,19 @@ import br.com.miranda.gestor.ativos.brutos.external.dto.*;
 import br.com.miranda.gestor.ativos.brutos.external.http.ClienteBrApi;
 import br.com.miranda.gestor.ativos.brutos.port.PortaFilaMensagens;
 import br.com.miranda.gestor.ativos.brutos.tools.ConversorJson;
+import br.com.miranda.gestor.ativos.brutos.tools.GeradorChaveDeduplicacaoAtivo;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
-import java.util.Optional;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERVICO;
 
 @Slf4j
 @Service
 public class ServicoAtivo {
-
-    private static final String VERSAO_PAYLOAD_ATIVO = "1.0";
 
     private final ClienteBrApi clienteBrApi;
     private final PortaFilaMensagens filaMensagens;
@@ -85,8 +79,7 @@ public class ServicoAtivo {
 
         AtivoBrapiDTO brapiDto = retorno.getResults().getFirst();
         Ativo ativo = mapper.map(brapiDto, Ativo.class);
-        ativo.setSchemaVersion(VERSAO_PAYLOAD_ATIVO);
-        ativo.setDedupKey(criarChaveDeduplicacao(ativo));
+        GeradorChaveDeduplicacaoAtivo.preencher(ativo);
         return ativo;
     }
 
@@ -104,25 +97,6 @@ public class ServicoAtivo {
         return retorno ;
     }
 
-    /**
-     * Consulta o perfil da empresa (setor, industria, resumo do negocio) na BRAPI,
-     * pra anexar as informacoes de insights ja geradas. E um enriquecimento, nao um
-     * dado essencial: qualquer falha (BRAPI fora, ticker sem perfil, etc.) degrada
-     * pra Optional vazio em vez de quebrar a resposta que a chama.
-     */
-    public Optional<PerfilEmpresaBrapiDTO> buscarPerfilEmpresa(String codigoAtivo) {
-        try {
-            var resposta = clienteBrApi.consultarPerfilEmpresa(codigoAtivo);
-            if (Objects.isNull(resposta) || resposta.getResults() == null || resposta.getResults().isEmpty()) {
-                return Optional.empty();
-            }
-            return Optional.ofNullable(resposta.getResults().getFirst().getData());
-        } catch (Exception e) {
-            log.warn("{} - Falha ao buscar perfil da empresa para {}: {}", SERVICO, codigoAtivo, e.getMessage());
-            return Optional.empty();
-        }
-    }
-
     private void publicarAtivoNaFila(Ativo ativo) {
         String payload = ConversorJson.paraJson(ativo);
         log.info("{} - Payload JSON gerado com {} bytes", SERVICO, payload.length());
@@ -135,23 +109,4 @@ public class ServicoAtivo {
         filaMensagens.enviarMensagemParaFila(payload, filaSeriesHistoricasUrl);
     }
 
-    private String criarChaveDeduplicacao(Ativo ativo) {
-        String identidade = String.join("|",
-                valor(ativo.getSymbol()),
-                valor(ativo.getRegularMarketTime()),
-                valor(ativo.getRegularMarketPrice()),
-                valor(ativo.getRegularMarketVolume()),
-                valor(ativo.getRegularMarketPreviousClose()));
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(identidade.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 indisponivel", e);
-        }
-    }
-
-    private String valor(Object valor) {
-        return valor == null ? "" : valor.toString();
-    }
 }

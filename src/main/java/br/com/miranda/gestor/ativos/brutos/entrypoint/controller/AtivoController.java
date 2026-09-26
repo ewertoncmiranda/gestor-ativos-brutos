@@ -2,8 +2,10 @@ package br.com.miranda.gestor.ativos.brutos.entrypoint.controller;
 
 import br.com.miranda.gestor.ativos.brutos.external.Ativo;
 import br.com.miranda.gestor.ativos.brutos.external.dto.AtivoMonitoradoDTO;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioCotacaoAtual;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtivo;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtivoMonitorado;
+import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoCache;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,34 +25,58 @@ public class AtivoController {
 
     private final ServicoAtivo servicoAtivo;
     private final ServicoAtivoMonitorado servicoAtivoMonitorado;
+    private final RepositorioCotacaoAtual repositorioCotacaoAtual;
+    private final ServicoAtualizacaoCache servicoAtualizacaoCache;
 
-    public AtivoController(ServicoAtivo servicoAtivo, ServicoAtivoMonitorado servicoAtivoMonitorado) {
+    public AtivoController(
+            ServicoAtivo servicoAtivo,
+            ServicoAtivoMonitorado servicoAtivoMonitorado,
+            RepositorioCotacaoAtual repositorioCotacaoAtual,
+            ServicoAtualizacaoCache servicoAtualizacaoCache
+    ) {
         this.servicoAtivo = servicoAtivo;
         this.servicoAtivoMonitorado = servicoAtivoMonitorado;
+        this.repositorioCotacaoAtual = repositorioCotacaoAtual;
+        this.servicoAtualizacaoCache = servicoAtualizacaoCache;
     }
 
     /**
-     * Consulta um ativo na BRAPI, publica o payload bruto na fila SQS e devolve os dados recebidos.
+     * Le a cotacao do cache (cotacao_atual, mantido pelo AgendadorCacheAtivos).
+     * So chama a BRAPI ao vivo se o simbolo nunca foi visto (busca livre de um
+     * ticker fora da carteira monitorada) - e nesse caso aquece o cache pra
+     * proxima leitura nao precisar bater na BRAPI de novo.
      */
     @GetMapping("/{ativo}")
     public ResponseEntity<Ativo> buscarPorSimbolo(@PathVariable String ativo) {
         log.info("{}-Requisicao recebida para buscar ativo: {}", CONTROLADOR, ativo);
-        Ativo ativoProcessado = servicoAtivo.buscarEProcessarAtivo(ativo);
-        log.info("{}-Resposta preparada para ativo: {}", CONTROLADOR, ativo);
-        return ResponseEntity.ok(ativoProcessado);
+        return ResponseEntity.ok(buscarComFallback(ativo));
     }
 
+    /**
+     * Mesmo contrato de resposta do endpoint acima - o "robusto" (tambem buscar
+     * historico) so importava pro efeito colateral de publicar na fila pro
+     * gerar-insights; pra leitura, os dois sempre foram o mesmo Ativo.
+     */
     @GetMapping("/robusto/{ativo}")
     public ResponseEntity<Ativo> buscarPorSimboloComSerieHistorica(@PathVariable String ativo) {
         log.info("{}-Requisicao robusta recebida para buscar ativo: {}", CONTROLADOR, ativo);
-        Ativo ativoProcessado = servicoAtivo.processarRobusto(ativo);
-        log.info("{}-Resposta robusta preparada para ativo: {}", CONTROLADOR, ativo);
-        return ResponseEntity.ok(ativoProcessado);
+        return ResponseEntity.ok(buscarComFallback(ativo));
+    }
+
+    private Ativo buscarComFallback(String simbolo) {
+        return repositorioCotacaoAtual.findBySimbolo(simbolo)
+                .map(Ativo::de)
+                .orElseGet(() -> {
+                    log.info("{}-Simbolo {} nao esta em cache; buscando ao vivo e aquecendo o cache", CONTROLADOR, simbolo);
+                    Ativo ativoAoVivo = servicoAtivo.processarRobusto(simbolo);
+                    servicoAtualizacaoCache.persistirCotacaoDoFallback(ativoAoVivo);
+                    return ativoAoVivo;
+                });
     }
 
     /**
      * Registra um ativo para monitoramento recorrente (cotacao + serie historica a cada 30s,
-     * via AgendadorAtivos) e ja dispara a primeira coleta robusta agora, sem esperar o proximo ciclo.
+     * via AgendadorCacheAtivos) e ja dispara a primeira coleta robusta agora, sem esperar o proximo ciclo.
      */
     @PostMapping("/registrar/{ativo}")
     public ResponseEntity<Void> registrarAtivo(@PathVariable String ativo) {

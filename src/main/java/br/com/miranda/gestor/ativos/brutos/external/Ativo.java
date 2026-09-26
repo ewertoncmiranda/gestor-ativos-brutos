@@ -30,4 +30,26 @@ public class Ativo {
     private BigDecimal priceEarnings;
     private BigDecimal earningsPerShare;
     private String logoUrl;
+
+    public static Ativo de(CotacaoAtualEntity entidade) {
+        Ativo ativo = new Ativo();
+        ativo.setSymbol(entidade.getSimbolo());
+        ativo.setShortName(entidade.getShortName());
+        ativo.setLongName(entidade.getLongName());
+        ativo.setMarketCap(entidade.getMarketCap());
+        ativo.setRegularMarketChange(entidade.getRegularMarketChange());
+        ativo.setRegularMarketChangePercent(entidade.getRegularMarketChangePercent());
+        ativo.setRegularMarketTime(entidade.getRegularMarketTime());
+        ativo.setRegularMarketPrice(entidade.getRegularMarketPrice());
+        ativo.setRegularMarketDayHigh(entidade.getRegularMarketDayHigh());
+        ativo.setRegularMarketDayLow(entidade.getRegularMarketDayLow());
+        ativo.setRegularMarketVolume(entidade.getRegularMarketVolume());
+        ativo.setRegularMarketPreviousClose(entidade.getRegularMarketPreviousClose());
+        ativo.setRegularMarketOpen(entidade.getRegularMarketOpen());
+        ativo.setFiftyTwoWeekLow(entidade.getFiftyTwoWeekLow());
+        ativo.setFiftyTwoWeekHigh(entidade.getFiftyTwoWeekHigh());
+        ativo.setPriceEarnings(entidade.getPriceEarnings());
+        ativo.setEarningsPerShare(entidade.getEarningsPerShare());
+        return ativo;
+    }
 }
