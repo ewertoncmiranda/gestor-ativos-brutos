@@ -15,5 +15,7 @@ public interface RepositorioIndiceMacro extends JpaRepository<IndiceMacroEntity,
 
     Optional<IndiceMacroEntity> findFirstByCodigoSerieOrderByDataDesc(String codigoSerie);
 
+    Optional<IndiceMacroEntity> findFirstByCodigoSerieOrderByDataAsc(String codigoSerie);
+
     List<IndiceMacroEntity> findByCodigoSerieOrderByDataDesc(String codigoSerie);
 }
