@@ -40,7 +40,7 @@ public record DiarioDeSinaisDTO(
             BigDecimal taxaBase,
             BigDecimal retornoMedio,
             BigDecimal excessoMedioCdi,
-            BigDecimal excessoMedioBova11,
+            BigDecimal excessoMedioCarteira,
             boolean amostraSuficiente) {
     }
 
@@ -60,7 +60,9 @@ public record DiarioDeSinaisDTO(
             LocalDate dataSaida,
             BigDecimal retornoLiquido,
             BigDecimal excessoCdi,
-            BigDecimal excessoBova11,
+            // Media simples dos ativos monitorados no mesmo periodo (CTR-11)
+            BigDecimal excessoCarteira,
+            Integer ativosNaCarteira,
             Boolean acerto,
             boolean eventoSuspeito) {
     }

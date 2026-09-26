@@ -85,7 +85,7 @@ public class ServicoDiarioDeSinais {
                             l.comDirecao() > 0 ? razao(l.acertos(), l.comDirecao()) : null,
                             direcao == 0 ? null : arredondar(base),
                             arredondar(l.retornoMedio()), arredondar(l.excessoMedioCdi()),
-                            arredondar(l.excessoMedioBova11()),
+                            arredondar(l.excessoMedioCarteira()),
                             l.avaliados() >= AMOSTRA_MINIMA);
                 })
                 .sorted(Comparator.comparing(LinhaPlacar::versaoRegra, Comparator.reverseOrder())
@@ -111,7 +111,7 @@ public class ServicoDiarioDeSinais {
         for (RepositorioDiarioDeSinais.Resultado r : resultados) {
             porSinal.computeIfAbsent(r.sinalId(), id -> new TreeMap<>()).put(r.horizonte(),
                     new ResultadoDoHorizonte(r.dataSaida(), r.retornoLiquido(), r.excessoCdi(),
-                            r.excessoBova11(), r.acerto(), r.eventoSuspeito()));
+                            r.excessoCarteira(), r.ativosNaCarteira(), r.acerto(), r.eventoSuspeito()));
         }
         return porSinal;
     }

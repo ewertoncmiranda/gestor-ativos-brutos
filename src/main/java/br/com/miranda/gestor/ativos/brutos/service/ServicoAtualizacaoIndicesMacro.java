@@ -28,10 +28,18 @@ public class ServicoAtualizacaoIndicesMacro {
     // Codigo da serie SGS -> quantos pontos recentes buscar por ciclo. Selic
     // e CDI sao diarios (mantem uns dias de historico); IPCA e mensal, um
     // ponto por mes ja cobre bastante tempo com poucos pontos.
+    //
+    // Codigos SGS confirmados ao vivo em 2026-09-26 com curl direto contra
+    // api.bcb.gov.br (nao e so leitura de documentacao) - ver IndicesMacroPage.js
+    // pro link de segunda fonte de cada um.
     private static final Map<String, Integer> SERIES = Map.of(
             "SELIC", 432,
             "CDI", 12,
-            "IPCA", 433
+            "IPCA", 433,
+            "IGPM", 189,
+            "DOLAR", 1,
+            "IBCBR", 24363,
+            "SELIC_DIARIA", 11
     );
     private static final int PONTOS_POR_CICLO = 10;
     // 10 pontos diarios ~ 2 semanas corridas; alem disso o ciclo nao fecha o buraco.

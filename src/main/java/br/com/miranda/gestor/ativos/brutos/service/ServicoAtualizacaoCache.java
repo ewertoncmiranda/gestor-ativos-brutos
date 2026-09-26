@@ -28,6 +28,7 @@ import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -312,6 +313,11 @@ public class ServicoAtualizacaoCache {
             return;
         }
         CotacaoAtualEntity entidade = repositorioCotacaoAtual.findBySimbolo(ativo.getSymbol()).orElseGet(CotacaoAtualEntity::new);
+        boolean jaExistia = entidade.getId() != null;
+        BigDecimal precoAntigo = entidade.getRegularMarketPrice();
+        LocalDateTime desdeAntigo = entidade.getPrecoAtualDesde();
+        LocalDateTime agora = LocalDateTime.now();
+
         entidade.setSimbolo(ativo.getSymbol());
         entidade.setShortName(ativo.getShortName());
         entidade.setLongName(ativo.getLongName());
@@ -329,7 +335,17 @@ public class ServicoAtualizacaoCache {
         entidade.setFiftyTwoWeekHigh(ativo.getFiftyTwoWeekHigh());
         entidade.setPriceEarnings(ativo.getPriceEarnings());
         entidade.setEarningsPerShare(ativo.getEarningsPerShare());
-        entidade.setAtualizadoEm(LocalDateTime.now());
+        entidade.setAtualizadoEm(agora);
+
+        if (jaExistia && precoAntigo != null && ativo.getRegularMarketPrice() != null
+                && precoAntigo.compareTo(ativo.getRegularMarketPrice()) != 0) {
+            entidade.setPrecoAnterior(precoAntigo);
+            entidade.setPrecoAnteriorEm(desdeAntigo != null ? desdeAntigo : entidade.getAtualizadoEm());
+            entidade.setPrecoAtualDesde(agora);
+        } else if (!jaExistia) {
+            entidade.setPrecoAtualDesde(agora);
+        }
+
         repositorioCotacaoAtual.save(entidade);
     }
 
@@ -350,6 +366,11 @@ public class ServicoAtualizacaoCache {
 
     private void persistirCotacao(String simbolo, AtivoBrapiDTO dados) {
         CotacaoAtualEntity entidade = repositorioCotacaoAtual.findBySimbolo(simbolo).orElseGet(CotacaoAtualEntity::new);
+        boolean jaExistia = entidade.getId() != null;
+        BigDecimal precoAntigo = entidade.getRegularMarketPrice();
+        LocalDateTime desdeAntigo = entidade.getPrecoAtualDesde();
+        LocalDateTime agora = LocalDateTime.now();
+
         entidade.setSimbolo(simbolo);
         entidade.setShortName(dados.getShortName());
         entidade.setLongName(dados.getLongName());
@@ -367,7 +388,23 @@ public class ServicoAtualizacaoCache {
         entidade.setFiftyTwoWeekHigh(dados.getFiftyTwoWeekHigh());
         entidade.setPriceEarnings(dados.getPriceEarnings());
         entidade.setEarningsPerShare(dados.getEarningsPerShare());
-        entidade.setAtualizadoEm(LocalDateTime.now());
+        // atualizadoEm sempre anda, a cada ciclo do agendador que efetivamente
+        // buscou a cotacao - e o que SelecionadorAtivosDevidos usa pra saber
+        // quando buscar de novo, independente do preco ter mudado ou nao.
+        entidade.setAtualizadoEm(agora);
+
+        // precoAtualDesde/precoAnterior(Em) so andam quando o preco de fato
+        // muda: se o novo preco e igual ao que ja estava salvo, o par
+        // anterior/atual desta cotacao fica exatamente como estava.
+        if (jaExistia && precoAntigo != null && dados.getRegularMarketPrice() != null
+                && precoAntigo.compareTo(dados.getRegularMarketPrice()) != 0) {
+            entidade.setPrecoAnterior(precoAntigo);
+            entidade.setPrecoAnteriorEm(desdeAntigo != null ? desdeAntigo : entidade.getAtualizadoEm());
+            entidade.setPrecoAtualDesde(agora);
+        } else if (!jaExistia) {
+            entidade.setPrecoAtualDesde(agora);
+        }
+
         repositorioCotacaoAtual.save(entidade);
     }
 

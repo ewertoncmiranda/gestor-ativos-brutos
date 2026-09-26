@@ -33,6 +33,9 @@ public class CargaInicialSetoresReferencia implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         var tickers = SetoresReferencia.TICKERS_POR_SETOR.values().stream()
                 .flatMap(List::stream)
+                // A lista e fotografia manual: se um ticker mudar de codigo
+                // antes de ela ser revista, a identidade corrige na subida.
+                .map(servicoAtivoMonitorado::canonizar)
                 .distinct()
                 .toList();
 
