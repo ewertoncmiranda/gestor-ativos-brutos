@@ -23,39 +23,51 @@ public final class ConsolidadorAnaliseAcao {
     private ConsolidadorAnaliseAcao() {
     }
 
-    /**
-     * Consolida análises históricas em um retrato quantitativo usado pelo prompt de IA.
-     */
+    /** Consolida análises históricas para a decisão determinística. */
     public static AnaliseConsolidadaDTO consolidar(List<AnaliseAcaoEntity> analises) {
         if (analises == null || analises.isEmpty()) {
             return null;
         }
 
-        String simbolo = analises.get(0).getSimbolo();
-        int total = analises.size();
+        List<AnaliseAcaoEntity> analisesValidas = analises.stream()
+                .filter(Objects::nonNull)
+                .toList();
+        if (analisesValidas.isEmpty()) {
+            return null;
+        }
 
-        LocalDateTime inicio = analises.stream()
+        String simbolo = analisesValidas.get(0).getSimbolo();
+        int total = analisesValidas.size();
+
+        LocalDateTime inicio = analisesValidas.stream()
                 .map(AnaliseAcaoEntity::getDataAnalise)
+                .filter(Objects::nonNull)
                 .min(LocalDateTime::compareTo)
                 .orElse(null);
 
-        LocalDateTime fim = analises.stream()
+        LocalDateTime fim = analisesValidas.stream()
                 .map(AnaliseAcaoEntity::getDataAnalise)
+                .filter(Objects::nonNull)
                 .max(LocalDateTime::compareTo)
                 .orElse(null);
 
-        Map<String, Long> contagemSinais = analises.stream()
-                .collect(Collectors.groupingBy(AnaliseAcaoEntity::getRecomendacao, Collectors.counting()));
+        Map<String, Long> contagemSinais = analisesValidas.stream()
+                .map(AnaliseAcaoEntity::getRecomendacao)
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(recomendacao -> recomendacao, Collectors.counting()));
 
         String sinalPredominante = contagemSinais.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey)
                 .orElse("INDEFINIDO");
 
-        long totalVenda = contagemSinais.getOrDefault("VENDA", 0L);
+        long totalVenda = contagemSinais.entrySet().stream()
+                .filter(entrada -> ehSinalDeVenda(entrada.getKey()))
+                .mapToLong(Map.Entry::getValue)
+                .sum();
         double percentualVenda = (totalVenda * 100.0) / total;
 
-        double variacaoMedia = analises.stream()
+        double variacaoMedia = analisesValidas.stream()
                 .map(AnaliseAcaoEntity::getMargemSegurancaPercent)
                 .filter(Objects::nonNull)
                 .mapToDouble(BigDecimal::doubleValue)
@@ -72,8 +84,12 @@ public final class ConsolidadorAnaliseAcao {
                 .sinalPredominante(sinalPredominante)
                 .percentualSinaisVenda(arredondar(percentualVenda))
                 .variacaoMedia(arredondar(variacaoMedia))
-                .indicadores(consolidarIndicadores(analises))
+                .indicadores(consolidarIndicadores(analisesValidas))
                 .build();
+    }
+
+    private static boolean ehSinalDeVenda(String recomendacao) {
+        return recomendacao != null && recomendacao.startsWith("VENDA");
     }
 
     private static Map<String, Object> consolidarIndicadores(List<AnaliseAcaoEntity> analises) {

@@ -3,12 +3,11 @@ package br.com.miranda.gestor.ativos.brutos.external;
 import lombok.Data;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
-
-
 @Data
 public class Ativo {
 
+    private String schemaVersion;
+    private String dedupKey;
     private Long id;
     private String symbol;
     private String currency;
@@ -17,7 +16,7 @@ public class Ativo {
     private BigDecimal marketCap;
     private BigDecimal regularMarketChange;
     private BigDecimal regularMarketChangePercent;
-    private LocalDateTime regularMarketTime;
+    private String regularMarketTime;
     private BigDecimal regularMarketPrice;
     private BigDecimal regularMarketDayHigh;
     private BigDecimal regularMarketDayLow;
