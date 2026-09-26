@@ -106,6 +106,6 @@ class ServicoAtualizacaoIndicesMacroTest {
     @Test
     void serie_desconhecida_e_erro_de_programacao() {
         assertThrows(IllegalArgumentException.class,
-                () -> servico.completarHistorico("DOLAR", LocalDate.of(2016, 1, 1), HOJE));
+                () -> servico.completarHistorico("SERIE_INEXISTENTE", LocalDate.of(2016, 1, 1), HOJE));
     }
 }
