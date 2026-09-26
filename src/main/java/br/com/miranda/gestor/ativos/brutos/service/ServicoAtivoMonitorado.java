@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERVICO;
 
@@ -18,6 +19,13 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERV
 public class ServicoAtivoMonitorado {
 
     private static final int INTERVALO_PADRAO_SEGUNDOS = 30;
+
+    // Universo de referencia por setor: cotacao serve so pra visao "Mercado por
+    // setor", nao pra decisao de trading - 1h de atraso e aceitavel e evita
+    // multiplicar por ~10x o volume de chamadas a BRAPI que os poucos ativos
+    // efetivamente monitorados (30s) hoje geram. Sem historico diario (so
+    // COTACAO): candle desses ativos nao e usado em lugar nenhum ainda.
+    private static final int INTERVALO_REFERENCIA_SEGUNDOS = 3600;
 
     private final RepositorioAtivoMonitorado repositorio;
 
@@ -44,6 +52,48 @@ public class ServicoAtivoMonitorado {
         AtivoMonitoradoEntity salva = repositorio.save(entidade);
         log.info("{} - Ativo monitorado registrado/reativado: {}", SERVICO, simbolo);
         return salva;
+    }
+
+    /**
+     * Registra um ativo so como referencia de setor (cotacao a cada
+     * INTERVALO_REFERENCIA_SEGUNDOS, sem historico diario). Se o simbolo ja
+     * estiver registrado - inclusive como monitorado de verdade, com
+     * intervalo mais curto - nao toca nele: registro de referencia nunca
+     * rebaixa um ativo que ja esta sendo acompanhado de perto.
+     */
+    public void registrarReferenciaSetor(String codigoAtivo) {
+        String simbolo = codigoAtivo.trim().toUpperCase();
+        if (repositorio.findBySimbolo(simbolo).isPresent()) {
+            return;
+        }
+
+        AtivoMonitoradoEntity nova = new AtivoMonitoradoEntity();
+        nova.setSimbolo(simbolo);
+        nova.setTipoColeta(TipoColeta.COTACAO);
+        nova.setIntervaloSegundos(INTERVALO_REFERENCIA_SEGUNDOS);
+        nova.setAtivo(Boolean.TRUE);
+        nova.setAtualizadoEm(LocalDateTime.now());
+        repositorio.save(nova);
+        log.info("{} - Ativo de referencia de setor registrado: {}", SERVICO, simbolo);
+    }
+
+    /**
+     * Desativa todo registro de referencia de setor (tipoColeta=COTACAO) cujo
+     * simbolo nao esta mais em tickersValidos. Usado quando o universo de
+     * referencia hardcoded encolhe (ex.: reduzido depois de estourar cota da
+     * BRAPI) - sem isso, o agendador continuaria tentando atualizar tickers
+     * que ja nao fazem parte do universo, so gastando cota sem propósito.
+     * Nao toca em nada com tipoColeta=COTACAO_E_HISTORICO: aquele e o ativo
+     * monitorado de verdade, cadastrado pelo usuario, nunca desativado por aqui.
+     */
+    public void desativarReferenciasObsoletas(Set<String> tickersValidos) {
+        repositorio.findByTipoColeta(TipoColeta.COTACAO).stream()
+                .filter(entidade -> entidade.getAtivo() && !tickersValidos.contains(entidade.getSimbolo()))
+                .forEach(entidade -> {
+                    entidade.setAtivo(Boolean.FALSE);
+                    repositorio.save(entidade);
+                    log.info("{} - Referencia de setor obsoleta desativada: {}", SERVICO, entidade.getSimbolo());
+                });
     }
 
     public List<AtivoMonitoradoEntity> listar() {

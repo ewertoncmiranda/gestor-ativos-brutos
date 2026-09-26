@@ -1,6 +1,7 @@
 package br.com.miranda.gestor.ativos.brutos.entrypoint.schedule;
 
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoCache;
+import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoIndicesMacro;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -27,6 +28,7 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.AGEN
 public class AgendadorCacheAtivos {
 
     private final ServicoAtualizacaoCache servicoAtualizacaoCache;
+    private final ServicoAtualizacaoIndicesMacro servicoAtualizacaoIndicesMacro;
 
     @Scheduled(fixedDelay = 5000)
     public void atualizarCotacoes() {
@@ -52,6 +54,15 @@ public class AgendadorCacheAtivos {
             servicoAtualizacaoCache.atualizarPerfilEmpresa();
         } catch (Exception e) {
             log.error("{}-Erro no ciclo de atualizacao de perfil de empresa: {}", AGENDADOR, e.getMessage(), e);
+        }
+    }
+
+    @Scheduled(fixedDelay = 86_400_000)
+    public void atualizarIndicesMacro() {
+        try {
+            servicoAtualizacaoIndicesMacro.atualizarIndicesMacro();
+        } catch (Exception e) {
+            log.error("{}-Erro no ciclo de atualizacao de indices macro: {}", AGENDADOR, e.getMessage(), e);
         }
     }
 }
