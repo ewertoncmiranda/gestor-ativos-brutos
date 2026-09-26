@@ -52,6 +52,7 @@ WebFlux e OpenFeign estão declarados no `pom.xml`, mas não são usados pela im
 | `GET` | `/ativos/registrados` | `AtivoController.listarRegistrados` | `200` com `AtivoMonitoradoDTO[]` | Lista a carteira monitorada, ordenada por símbolo. |
 | `GET` | `/analises/{simbolo}/analise` | `AnaliseAcaoController.buscarPorSimbolo` | `200` com `RespostaAnaliseIaDTO` | Lê todo o histórico do símbolo em `insight_acao`, consolida os dados e aplica regras determinísticas. |
 | `GET` | `/analises/{simbolo}/fundamentos` | `AnaliseAcaoController.buscarFundamentos` | `200` com `FundamentosAtivoDTO` | Devolve o `detalhes_json` bruto do ciclo mais recente (sem consolidar/mediar) — os números exatos de valuation Graham, classificações e contexto técnico daquela análise, mais o perfil de operação (day trade / swing-reversão / longo prazo, não exclusivos) e os riscos de comprar/vender agora, calculados por `PerfilOperacaoClassificador`. |
+| `GET` | `/analises/{simbolo}/fundamentos-cvm` | `AnaliseAcaoController.buscarFundamentosCvm` | `200` com `FundamentosCvmDTO` | Le `indicador_fundamentalista` (escrita pelo ETL `etl-fundamentos-cvm` a partir dos dados abertos da CVM) e deriva `P/L` e `P/VP` na hora, cruzando `lpa`/`vpa` com a cotacao mais recente de `historico_acoes`. Simbolo sem carga devolve `200` com campos nulos. Metrica nula pode ser deliberada: `cobertura_json` diz por que. |
 | `GET` | `/api/v2/stocks/historical` | `HistoricoAcoesController.buscarHistorico` | `200` com `RespostaHistoricoAcoesDTO` | Proxy autenticado para o histórico da BRAPI; não publica em SQS. |
 | `GET` | `/actuator` | Spring Boot Actuator | `200` com links dos endpoints expostos | Disponível conforme a exposição do perfil ativo. |
 | `GET` | `/actuator/health` | Spring Boot Actuator | `200` ou `503` com o estado de saúde | No perfil `dev`, inclui detalhes de saúde. |
@@ -264,6 +265,26 @@ O adaptador SQS faz uma tentativa inicial e até três novas tentativas, sem esp
 | `detalhes_json` | JSON | Só campos numéricos no primeiro nível entram nas médias. |
 
 Com `spring.jpa.hibernate.ddl-auto=update`, a aplicação pode alterar o schema durante a inicialização.
+
+### MySQL: fundamentos CVM
+
+Tabela `indicador_fundamentalista`, **escrita pelo job `etl-fundamentos-cvm`** (Python, em lote) e lida somente por esta aplicação. Cobre o que o plano gratuito da BRAPI não entrega: ROE, ROIC, margens, dívida líquida e fluxo de caixa livre.
+
+| Coluna | Tipo | Observação |
+| --- | --- | --- |
+| `simbolo`, `periodo`, `tipo_periodo` | chave natural | Um registro por exercício. `tipo_periodo` é `ANUAL`, `TRIMESTRAL` ou `TTM` |
+| `lpa`, `vpa` | DECIMAL(18,6) | Calculados sobre a parcela do **controlador**, que é a convenção de mercado |
+| `roe`, `roic`, `margem_liquida` | DECIMAL(10,4) | Em pontos percentuais, já multiplicados por 100 |
+| `divida_bruta`, `divida_liquida`, `caixa_equivalentes`, `fluxo_caixa_livre` | DECIMAL(24,2) | Em reais. Dívida líquida negativa significa caixa líquido |
+| `capex` | DECIMAL(24,2) | **Sempre nulo**: a CVM não padroniza essa conta |
+| `plano_contas` | VARCHAR(20) | `GERAL`, `FINANCEIRO` ou `SEGURADORA`. Banco não tem margem nem ROIC comparáveis |
+| `cobertura_json` | JSON | Procedência por métrica: qual conta foi usada, ou **por que** ficou nula |
+
+**Campo nulo é informação, não falha.** Quando o plano de contas da companhia não comporta a métrica, o ETL grava NULL de propósito e registra a razão — ausência explícita é melhor que número errado.
+
+`P/L` e `P/VP` **não existem nesta tabela**: são derivados na leitura, cruzando `lpa`/`vpa` (que mudam por trimestre) com o preço de `historico_acoes` (que muda em segundos). É o que os mantém atuais sem reexecutar o ETL.
+
+Contrato canônico: `infra-b3-ecossytem#CTR-06`. Vocabulário: [GLOSSARIO.md](../../infra-b3-ecossytem/GLOSSARIO.md).
 
 ### MySQL: carteira de monitoramento
 
