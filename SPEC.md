@@ -49,6 +49,8 @@ Fluxo SDD: `Spec → Plano → Tarefas → Implementação → Verificação →
 | GET | `/analises/{simbolo}/analise` | Consolida todo o histórico de `insight_acao` e devolve a decisão deterministica (média) | — |
 | GET | `/analises/{simbolo}/fundamentos` | Devolve o `detalhes_json` **bruto** (não mediado) da análise mais recente do símbolo — os números e classificações exatos de um único ciclo, mais o perfil de operação e riscos derivados (`FundamentosAtivoDTO`, ver `PerfilOperacaoClassificador` na seção 3.2) | — |
 | GET | `/api/v2/stocks/historical` | Proxy para a BRAPI (`symbols`, `range`, `interval`, `startDate`, `endDate`, `sortOrder`) | — |
+| GET | `/empresas/{simbolo}/comunicados` | Linha do tempo dos comunicados oficiais da CVM do ticker (`categorias`, `desde`, `ate`, `pagina`, `tamanho` ≤ 100), mais recente primeiro (`LinhaDoTempoComunicadosDTO`) | — |
+| GET | `/comunicados/newsletter` | Edição da carteira monitorada agrupada por ticker e ordenada por relevância (`semana` ISO `2026-W39`, ou `desde`+`ate`; sem parâmetro, a semana do documento mais recente) (`NewsletterComunicadosDTO`) | — |
 | GET | `/actuator/health`, `/actuator/prometheus` | Saúde e métricas | — |
 
 ### 2.2 Fluxos principais
@@ -186,11 +188,13 @@ OBSOLETO — descrevia o prompt enviado ao Gemini (removido). O prompt pedia "ri
 | REQ-08 | Expor o retrato bruto (não mediado) de um único ciclo de análise, para transparência de metodologia | IMPLEMENTADO (2026-09-25, `GET /analises/{simbolo}/fundamentos`) |
 | REQ-09 | Expor fundamentos contábeis da CVM com múltiplos derivados do preço atual | IMPLEMENTADO (2026-09-26, `GET /analises/{simbolo}/fundamentos-cvm`); lê `indicador_fundamentalista` (`infra#CTR-06`), escrita pelo ETL `etl-fundamentos-cvm` |
 | REQ-10 | `GET /ativos/registrados` passa a ser contrato de navegacao, nao so de listagem | IMPLEMENTADO (2026-09-26); o painel usa a carteira para popular o seletor de ativos de todas as abas, entao indisponibilidade dessa rota degrada a navegacao do front (que cai para busca manual) |
+| REQ-11 | Expor os comunicados oficiais da CVM (base IPE) por ticker e como newsletter da carteira | IMPLEMENTADO (2026-09-26, `ComunicadoController` + `ServicoComunicados`); lê `comunicado_cvm` (`infra#CTR-08`, escrita só pelo ETL) juntando com `cvm_ticker`; contrato HTTP `infra#CTR-10`. Somente leitura: entidade `@Immutable`, sem `unique` declarado para o `ddl-auto=update` não criar chave duplicada |
 
 Critérios de aceite de referência:
 - **REQ-02** — *Dado* que a BRAPI devolve PETR4, *quando* `GET /ativos/PETR4` é chamado, *então* uma mensagem com `symbol=PETR4` e `regularMarketPrice` numérico chega a `tratar-ativos`.
 - **REQ-04** — *Dado* 10 insights com 4 `VENDA_VALUATION`, *quando* a consolidação roda, *então* `percentualSinaisVenda = 40`.
 - **REQ-05** — OBSOLETO: critério do fluxo S3 removido.
+- **REQ-11** — *Dado* os comunicados de 2026 carregados, *quando* `GET /empresas/PETR4/comunicados?categorias=FATO_RELEVANTE,COMUNICADO_MERCADO&desde=2026-01-01&ate=2026-12-31` é chamado, *então* `total = 93`. *Dado* categoria desconhecida, semana malformada ou `desde` > `ate`, *então* 400. *Sem* `semana`, a newsletter usa a semana do documento mais recente (`dadosAte`), não a corrente, porque a CVM republica com ~1 semana de atraso.
 
 ### 6.2 Não funcionais
 
@@ -270,6 +274,8 @@ Critérios de aceite de referência:
 | TASK-22 | OBSOLETO — prompt/schema do Gemini removidos; disclaimer legal (`F2`) deve ser adicionado direto na resposta HTTP de `MontadorDecisaoDeterministica` | F2 | Resposta HTTP contém `aviso_legal` | TASK-03 | ABERTO (reescopado para F2) |
 | TASK-23 | OBSOLETO — S3 removido, sem chave a corrigir | ISS-16 | — | — | RESOLVIDO (remoção) |
 | TASK-24 | Limpeza do `pom.xml` | ISS-15 | Build verde; imagem menor | TASK-04 | ABERTO |
+| TASK-25 | API de comunicados oficiais da CVM: linha do tempo por ticker e newsletter semanal | REQ-11 | Critério REQ-11 passa; `ServicoComunicadosTest` verde | ETL `--comunicados` (etl#REQ-09) | CONCLUIDO (2026-09-26) |
+| TASK-26 | Tela de comunicados no painel (`#/comunicados`) consumindo `infra#CTR-10` | REQ-11 | Chips por ticker, linha do tempo, link "Abrir documento na CVM ↗" | TASK-25 | CONCLUIDO (2026-09-26, `painel#REQ-08`) |
 
 ---
 
