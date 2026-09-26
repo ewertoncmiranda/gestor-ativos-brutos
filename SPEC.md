@@ -184,6 +184,7 @@ OBSOLETO — descrevia o prompt enviado ao Gemini (removido). O prompt pedia "ri
 | REQ-06 | Agendar coleta **recorrente** de uma carteira de ativos | IMPLEMENTADO (`TASK-20`, 2026-09-25 — cadastro persistido + reprocessamento a cada 30s; não há ainda restrição ao horário de pregão) |
 | REQ-07 | Gerar a análise de IA somente depois que o insight do dia estiver disponível | PLANEJADO (`TASK-21`) |
 | REQ-08 | Expor o retrato bruto (não mediado) de um único ciclo de análise, para transparência de metodologia | IMPLEMENTADO (2026-09-25, `GET /analises/{simbolo}/fundamentos`) |
+| REQ-09 | Expor fundamentos contábeis da CVM com múltiplos derivados do preço atual | IMPLEMENTADO (2026-09-26, `GET /analises/{simbolo}/fundamentos-cvm`); lê `indicador_fundamentalista` (`infra#CTR-06`), escrita pelo ETL `etl-fundamentos-cvm` |
 
 Critérios de aceite de referência:
 - **REQ-02** — *Dado* que a BRAPI devolve PETR4, *quando* `GET /ativos/PETR4` é chamado, *então* uma mensagem com `symbol=PETR4` e `regularMarketPrice` numérico chega a `tratar-ativos`.
