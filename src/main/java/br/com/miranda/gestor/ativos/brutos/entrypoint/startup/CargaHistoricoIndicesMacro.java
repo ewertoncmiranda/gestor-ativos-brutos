@@ -13,7 +13,8 @@ import java.time.LocalDate;
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERVICO;
 
 /**
- * Unica responsabilidade: na subida, garantir o historico diario do CDI desde
+ * Unica responsabilidade: na subida, garantir o historico do CDI (diario) e do
+ * IPCA (mensal) desde
  * {@code indices.macro.historico.inicio}. O backtest e o diario de sinais do
  * gerar-insights comparam cada retorno com o CDI acumulado no mesmo periodo;
  * com os 10 pontos do ciclo horario essa comparacao nao existe.
@@ -36,11 +37,15 @@ public class CargaHistoricoIndicesMacro implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         LocalDate desde = LocalDate.parse(inicio);
         Thread.ofVirtual().name("carga-historico-cdi").start(() -> {
-            try {
-                servicoIndicesMacro.completarHistorico("CDI", desde, LocalDate.now());
-            } catch (Exception e) {
-                // Falha aqui so adia a validacao; o painel segue funcionando.
-                log.error("{} - Falha ao completar historico do CDI: {}", SERVICO, e.getMessage(), e);
+            // IPCA mensal: a regra v2 usa o IPCA de 12 meses para o crescimento
+            // nominal do Graham, no diario e no backtest.
+            for (String serie : java.util.List.of("CDI", "IPCA")) {
+                try {
+                    servicoIndicesMacro.completarHistorico(serie, desde, LocalDate.now());
+                } catch (Exception e) {
+                    // Falha aqui so adia a validacao; o painel segue funcionando.
+                    log.error("{} - Falha ao completar historico de {}: {}", SERVICO, serie, e.getMessage(), e);
+                }
             }
         });
     }
