@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
+import java.util.Optional;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERVICO;
 
@@ -92,6 +93,25 @@ public class ServicoAtivo {
         }
 
         return retorno ;
+    }
+
+    /**
+     * Consulta o perfil da empresa (setor, industria, resumo do negocio) na BRAPI,
+     * pra anexar as informacoes de insights ja geradas. E um enriquecimento, nao um
+     * dado essencial: qualquer falha (BRAPI fora, ticker sem perfil, etc.) degrada
+     * pra Optional vazio em vez de quebrar a resposta que a chama.
+     */
+    public Optional<PerfilEmpresaBrapiDTO> buscarPerfilEmpresa(String codigoAtivo) {
+        try {
+            var resposta = clienteBrApi.consultarPerfilEmpresa(codigoAtivo);
+            if (Objects.isNull(resposta) || resposta.getResults() == null || resposta.getResults().isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.ofNullable(resposta.getResults().getFirst().getData());
+        } catch (Exception e) {
+            log.warn("{} - Falha ao buscar perfil da empresa para {}: {}", SERVICO, codigoAtivo, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private void publicarAtivoNaFila(Ativo ativo) {

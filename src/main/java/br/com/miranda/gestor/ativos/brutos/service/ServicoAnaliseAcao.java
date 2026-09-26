@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Slf4j
@@ -24,6 +25,19 @@ public class ServicoAnaliseAcao {
         } catch (Exception e) {
             log.error("Erro ao buscar analises para simbolo: {}, erro: {}", simbolo, e.getMessage(), e);
             return List.of();
+        }
+    }
+
+    /**
+     * Busca a análise mais recente do símbolo, com o detalhes_json bruto (não consolidado/mediado),
+     * usada para expor os fundamentos e cálculos exatos que embasaram a última decisão.
+     */
+    public Optional<AnaliseAcaoEntity> buscarUltimaPorSimbolo(String simbolo) {
+        try {
+            return repositorio.findFirstBySimboloOrderByDataAnaliseDesc(simbolo);
+        } catch (Exception e) {
+            log.error("Erro ao buscar ultima analise para simbolo: {}, erro: {}", simbolo, e.getMessage(), e);
+            return Optional.empty();
         }
     }
 
