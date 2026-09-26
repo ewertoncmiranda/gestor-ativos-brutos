@@ -19,7 +19,7 @@ public final class ConversorJson {
         try {
             log.debug("{}-Iniciando conversao para JSON. Tipo: {}", CONVERSOR_JSON, obj.getClass().getSimpleName());
 
-            ObjectMapper mapper = new ObjectMapper();
+            ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
             String json = mapper.writeValueAsString(obj);
 
             log.debug("{}-JSON gerado com sucesso. Tamanho: {} bytes", CONVERSOR_JSON, json.length());

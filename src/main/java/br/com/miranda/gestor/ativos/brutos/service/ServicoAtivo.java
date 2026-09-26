@@ -13,12 +13,18 @@ import org.springframework.stereotype.Service;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERVICO;
 
 @Slf4j
 @Service
 public class ServicoAtivo {
+
+    private static final String VERSAO_PAYLOAD_ATIVO = "1.0";
 
     private final ClienteBrApi clienteBrApi;
     private final PortaFilaMensagens filaMensagens;
@@ -78,7 +84,10 @@ public class ServicoAtivo {
         }
 
         AtivoBrapiDTO brapiDto = retorno.getResults().getFirst();
-        return mapper.map(brapiDto, Ativo.class);
+        Ativo ativo = mapper.map(brapiDto, Ativo.class);
+        ativo.setSchemaVersion(VERSAO_PAYLOAD_ATIVO);
+        ativo.setDedupKey(criarChaveDeduplicacao(ativo));
+        return ativo;
     }
 
 
@@ -124,5 +133,25 @@ public class ServicoAtivo {
         String payload = ConversorJson.paraJson(historico);
         log.info("{} - Payload JSON de serie historica gerado com {} bytes", SERVICO, payload.length());
         filaMensagens.enviarMensagemParaFila(payload, filaSeriesHistoricasUrl);
+    }
+
+    private String criarChaveDeduplicacao(Ativo ativo) {
+        String identidade = String.join("|",
+                valor(ativo.getSymbol()),
+                valor(ativo.getRegularMarketTime()),
+                valor(ativo.getRegularMarketPrice()),
+                valor(ativo.getRegularMarketVolume()),
+                valor(ativo.getRegularMarketPreviousClose()));
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(identidade.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 indisponivel", e);
+        }
+    }
+
+    private String valor(Object valor) {
+        return valor == null ? "" : valor.toString();
     }
 }
