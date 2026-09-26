@@ -3,6 +3,7 @@ package br.com.miranda.gestor.ativos.brutos.external.http;
 import br.com.miranda.gestor.ativos.brutos.exceptions.ExcecaoIntegracaoBrapi;
 import br.com.miranda.gestor.ativos.brutos.external.dto.ConsultaHistoricoAcoesDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaBrapiDTO;
+import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaCotacaoEmLoteBrapiDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaHistoricoAcoesDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaPerfilBrapiDTO;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -21,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.BRAPI_SERVICE;
@@ -31,6 +33,7 @@ public class ClienteBrApi {
 
     private static final String BRAPI_BASE_URL = "https://brapi.dev";
     private static final String CAMINHO_COTACAO = "/api/quote/{symbol}";
+    private static final String CAMINHO_COTACAO_EM_LOTE = "/api/v2/stocks/quote";
     private static final String CAMINHO_HISTORICO_ACOES = "/api/v2/stocks/historical";
     private static final String CAMINHO_PERFIL_EMPRESA = "/api/v2/stocks/profile";
 
@@ -81,6 +84,28 @@ public class ClienteBrApi {
         RespostaHistoricoAcoesDTO resposta = executarGet(url, RespostaHistoricoAcoesDTO.class, "stocks/historical");
         int totalResultados = resposta == null || resposta.results() == null ? 0 : resposta.results().size();
         log.info("{}-Historico OHLCV parseado com sucesso. Resultados: {}", BRAPI_SERVICE, totalResultados);
+        return resposta;
+    }
+
+    /**
+     * Consulta a cotacao de varios ativos numa unica chamada. Endpoint em lote
+     * (diferente do /api/quote/{symbol} legado, que aceita so um simbolo) -
+     * necessario porque o plano Gratuito da BRAPI recusa mais de 1 ativo por
+     * requisicao no endpoint singular, mas o em lote aceita ate o limite do
+     * plano (1 no Gratuito, 10 no Startup, 20 no Pro).
+     */
+    public RespostaCotacaoEmLoteBrapiDTO consultarCotacaoEmLote(List<String> simbolos) {
+        String simbolosCsv = String.join(",", simbolos);
+        log.info("{}-Iniciando consulta em lote para simbolos: {}", BRAPI_SERVICE, simbolosCsv);
+
+        String url = UriComponentsBuilder.fromHttpUrl(BRAPI_BASE_URL)
+                .path(CAMINHO_COTACAO_EM_LOTE)
+                .queryParam("symbols", simbolosCsv)
+                .toUriString();
+
+        RespostaCotacaoEmLoteBrapiDTO resposta = executarGet(url, RespostaCotacaoEmLoteBrapiDTO.class, "quote-lote/" + simbolosCsv);
+        int totalResultados = resposta == null || resposta.getResults() == null ? 0 : resposta.getResults().size();
+        log.info("{}-Cotacao em lote parseada com sucesso. Resultados: {}", BRAPI_SERVICE, totalResultados);
         return resposta;
     }
 

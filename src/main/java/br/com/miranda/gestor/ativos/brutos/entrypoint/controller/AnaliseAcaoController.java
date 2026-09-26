@@ -7,7 +7,7 @@ import br.com.miranda.gestor.ativos.brutos.external.dto.FundamentosCvmDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaAnaliseIaDTO;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAnaliseAcao;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoFundamentosCvm;
-import br.com.miranda.gestor.ativos.brutos.service.ServicoAtivo;
+import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoCache;
 import br.com.miranda.gestor.ativos.brutos.tools.ConsolidadorAnaliseAcao;
 import br.com.miranda.gestor.ativos.brutos.tools.MontadorDecisaoDeterministica;
 import br.com.miranda.gestor.ativos.brutos.tools.PerfilOperacaoClassificador;
@@ -32,7 +32,7 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.CONT
 public class AnaliseAcaoController {
 
     private final ServicoAnaliseAcao servicoAnaliseAcao;
-    private final ServicoAtivo servicoAtivo;
+    private final ServicoAtualizacaoCache servicoAtualizacaoCache;
     private final ServicoFundamentosCvm servicoFundamentosCvm;
 
     /**
@@ -71,7 +71,7 @@ public class AnaliseAcaoController {
         dto.setRiscoCompraAgora(perfil.riscoCompraAgora());
         dto.setRiscoVendaAgora(perfil.riscoVendaAgora());
         dto.setConfluenciaSinais(perfil.confluenciaSinais());
-        servicoAtivo.buscarPerfilEmpresa(simbolo).ifPresent(dto::setPerfilEmpresa);
+        servicoAtualizacaoCache.buscarPerfilComFallback(simbolo).ifPresent(dto::setPerfilEmpresa);
         return dto;
     }
 
