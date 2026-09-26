@@ -11,6 +11,8 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -24,6 +26,8 @@ public class ClienteBancoCentral {
 
     private static final String BASE_URL = "https://api.bcb.gov.br";
     private static final String CAMINHO_SERIE = "/dados/serie/bcdata.sgs.{codigo}/dados/ultimos/{n}";
+    private static final String CAMINHO_PERIODO = "/dados/serie/bcdata.sgs.{codigo}/dados";
+    private static final DateTimeFormatter FORMATO_BCB = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper;
@@ -45,6 +49,29 @@ public class ClienteBancoCentral {
                 .buildAndExpand(codigoSgs, ultimosN)
                 .toUriString();
 
+        return buscar(url, codigoSgs);
+    }
+
+    /**
+     * Consulta um periodo fechado de uma serie SGS. O BCB limita o intervalo
+     * por chamada para series diarias; quem chama deve fatiar (ano a ano
+     * basta com folga).
+     */
+    public List<PontoSerieSgsDTO> consultarSeriePeriodo(int codigoSgs, LocalDate inicio, LocalDate fim) {
+        log.info("(BCB-SERVICE)-Consultando serie SGS {} de {} a {}", codigoSgs, inicio, fim);
+
+        String url = UriComponentsBuilder.fromHttpUrl(BASE_URL)
+                .path(CAMINHO_PERIODO)
+                .queryParam("formato", "json")
+                .queryParam("dataInicial", inicio.format(FORMATO_BCB))
+                .queryParam("dataFinal", fim.format(FORMATO_BCB))
+                .buildAndExpand(codigoSgs)
+                .toUriString();
+
+        return buscar(url, codigoSgs);
+    }
+
+    private List<PontoSerieSgsDTO> buscar(String url, int codigoSgs) {
         try {
             ResponseEntity<String> resposta = restTemplate.getForEntity(url, String.class);
             String corpo = resposta.getBody();

@@ -4,6 +4,7 @@ import br.com.miranda.gestor.ativos.brutos.external.dto.FundamentosAtivoDTO.Conf
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -96,7 +97,11 @@ public final class PerfilOperacaoClassificador {
         int venda = 0;
         int neutro = 0;
 
-        for (String sentido : List.of(sentidoDaRecomendacao(recomendacao), sentidoTecnico(sinalMomentum), sentidoTecnico(sinalReversao))) {
+        // Arrays.asList, nao List.of: os tres sentidos podem vir null (sinal
+        // tecnico ausente ou recomendacao nao reconhecida) - List.of proibe
+        // elemento null e lancava NPE aqui, quebrando o endpoint inteiro de
+        // /fundamentos mesmo quando so um dos tres sinais faltava.
+        for (String sentido : Arrays.asList(sentidoDaRecomendacao(recomendacao), sentidoTecnico(sinalMomentum), sentidoTecnico(sinalReversao))) {
             if (sentido == null) {
                 continue;
             }
