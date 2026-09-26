@@ -1,6 +1,7 @@
 package br.com.miranda.gestor.ativos.brutos.entrypoint.schedule;
 
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoCache;
+import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoIndicadoresIbge;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoIndicesMacro;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class AgendadorCacheAtivos {
 
     private final ServicoAtualizacaoCache servicoAtualizacaoCache;
     private final ServicoAtualizacaoIndicesMacro servicoAtualizacaoIndicesMacro;
+    private final ServicoAtualizacaoIndicadoresIbge servicoAtualizacaoIndicadoresIbge;
 
     @Scheduled(fixedDelay = 5000)
     public void atualizarCotacoes() {
@@ -63,6 +65,21 @@ public class AgendadorCacheAtivos {
             servicoAtualizacaoIndicesMacro.atualizarIndicesMacro();
         } catch (Exception e) {
             log.error("{}-Erro no ciclo de atualizacao de indices macro: {}", AGENDADOR, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Mesmo tick de 24h dos indices macro do BCB - o IBGE atualiza essas
+     * series mensalmente, entao rodar 1x/dia so repete o mesmo valor ate
+     * sair ponto novo, sem desperdicio real (a API do SIDRA nao documenta
+     * limite de requisicao).
+     */
+    @Scheduled(fixedDelay = 86_400_000)
+    public void atualizarIndicadoresIbge() {
+        try {
+            servicoAtualizacaoIndicadoresIbge.atualizarIndicadores();
+        } catch (Exception e) {
+            log.error("{}-Erro no ciclo de atualizacao de indicadores IBGE: {}", AGENDADOR, e.getMessage(), e);
         }
     }
 }
