@@ -53,4 +53,15 @@ public class CotacaoAtualEntity {
 
     @Column(name = "atualizado_em", nullable = false)
     private LocalDateTime atualizadoEm;
+
+    // Os tres campos abaixo NAO andam a cada ciclo do agendador (isso e
+    // atualizadoEm, usado por SelecionadorAtivosDevidos pra saber quando
+    // buscar de novo) - so andam quando regularMarketPrice de fato muda de
+    // valor. precoAtualDesde e quando o preco atual (regularMarketPrice)
+    // passou a valer; precoAnterior/precoAnteriorEm sao o par (valor, desde
+    // quando) que valia imediatamente antes dessa ultima mudanca. Ver
+    // ServicoAtualizacaoCache.persistirCotacao.
+    private BigDecimal precoAnterior;
+    private LocalDateTime precoAnteriorEm;
+    private LocalDateTime precoAtualDesde;
 }

@@ -27,16 +27,18 @@ public final class SetoresReferencia {
     private static Map<String, List<String>> criarMapa() {
         Map<String, List<String>> mapa = new LinkedHashMap<>();
 
+        // Codigos canonicos (ativo_identidade): AXIA3 e a antiga ELET3, EMBJ3 a
+        // EMBR3, JBSS32 o BDR da JBS N.V. e MBRF3 a Marfrig ja com a BRF.
         mapa.put("Bancos e Servicos Financeiros", List.of("ITUB4", "BBDC4", "BBAS3"));
         mapa.put("Energia (Petroleo, Gas e Biocombustiveis)", List.of("PETR4", "PRIO3", "VBBR3"));
         mapa.put("Mineracao e Siderurgia", List.of("VALE3", "CSNA3", "GGBR4"));
         mapa.put("Varejo e Consumo", List.of("MGLU3", "LREN3", "RENT3"));
-        mapa.put("Bens Industriais e Transporte", List.of("WEGE3", "EMBR3", "RAIL3"));
-        mapa.put("Utilidades (Energia Eletrica e Saneamento)", List.of("ELET3", "CPFE3", "EQTL3"));
+        mapa.put("Bens Industriais e Transporte", List.of("WEGE3", "EMBJ3", "RAIL3"));
+        mapa.put("Utilidades (Energia Eletrica e Saneamento)", List.of("AXIA3", "CPFE3", "EQTL3"));
         mapa.put("Saude", List.of("RDOR3", "HAPV3", "FLRY3"));
         mapa.put("Tecnologia e Comunicacoes", List.of("TOTS3", "VIVT3", "TIMS3"));
         mapa.put("Imobiliario e Construcao", List.of("CYRE3", "MRVE3", "EZTC3"));
-        mapa.put("Consumo Nao Ciclico e Agro", List.of("JBSS3", "BRFS3", "MRFG3"));
+        mapa.put("Consumo Nao Ciclico e Agro", List.of("JBSS32", "MBRF3", "BEEF3"));
 
         // Collections.unmodifiableMap, nao Map.copyOf: preserva a ordem de
         // insercao do LinkedHashMap (Map.copyOf nao garante ordem nenhuma),

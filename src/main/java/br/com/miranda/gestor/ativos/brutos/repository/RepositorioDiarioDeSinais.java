@@ -34,13 +34,13 @@ public class RepositorioDiarioDeSinais {
     }
 
     public record Resultado(long sinalId, int horizonte, LocalDate dataSaida, BigDecimal retornoLiquido,
-                            BigDecimal excessoCdi, BigDecimal excessoBova11, Boolean acerto,
-                            boolean eventoSuspeito) {
+                            BigDecimal excessoCdi, BigDecimal excessoCarteira, Integer ativosNaCarteira,
+                            Boolean acerto, boolean eventoSuspeito) {
     }
 
     public record LinhaPlacar(String versaoRegra, String recomendacao, int horizonte, long avaliados,
                               long comDirecao, long acertos, BigDecimal retornoMedio,
-                              BigDecimal excessoMedioCdi, BigDecimal excessoMedioBova11) {
+                              BigDecimal excessoMedioCdi, BigDecimal excessoMedioCarteira) {
     }
 
     public record Totais(long sinais, long ativos, LocalDate primeiroPregao, LocalDate ultimoPregao,
@@ -77,13 +77,13 @@ public class RepositorioDiarioDeSinais {
             return List.of();
         }
         return jdbc.query(
-                "SELECT sinal_id, horizonte, data_saida, retorno_liquido, excesso_cdi, excesso_bova11, acerto, "
-                        + "evento_suspeito FROM sinal_resultado WHERE sinal_id IN (:ids)",
+                "SELECT sinal_id, horizonte, data_saida, retorno_liquido, excesso_cdi, excesso_carteira, "
+                        + "ativos_na_carteira, acerto, evento_suspeito FROM sinal_resultado WHERE sinal_id IN (:ids)",
                 Map.of("ids", idsDeSinais),
                 (rs, i) -> new Resultado(rs.getLong("sinal_id"), rs.getInt("horizonte"), data(rs, "data_saida"),
                         rs.getBigDecimal("retorno_liquido"), rs.getBigDecimal("excesso_cdi"),
-                        rs.getBigDecimal("excesso_bova11"), (Boolean) rs.getObject("acerto", Boolean.class),
-                        rs.getBoolean("evento_suspeito")));
+                        rs.getBigDecimal("excesso_carteira"), rs.getObject("ativos_na_carteira", Integer.class),
+                        (Boolean) rs.getObject("acerto", Boolean.class), rs.getBoolean("evento_suspeito")));
     }
 
     /** Janelas suspeitas de desdobramento ficam fora: nao sao acerto nem erro da regra. */
@@ -92,7 +92,7 @@ public class RepositorioDiarioDeSinais {
                 "SELECT s.versao_regra, s.recomendacao, r.horizonte, COUNT(*) avaliados, "
                         + "SUM(r.acerto IS NOT NULL) com_direcao, SUM(r.acerto = TRUE) acertos, "
                         + "AVG(r.retorno_liquido) retorno_medio, AVG(r.excesso_cdi) excesso_cdi, "
-                        + "AVG(r.excesso_bova11) excesso_bova11 "
+                        + "AVG(r.excesso_carteira) excesso_carteira "
                         + "FROM sinal_resultado r JOIN sinal_diario s ON s.id = r.sinal_id "
                         + "WHERE r.evento_suspeito = FALSE AND (:simbolo IS NULL OR s.simbolo = :simbolo) "
                         + "GROUP BY s.versao_regra, s.recomendacao, r.horizonte",
@@ -100,7 +100,7 @@ public class RepositorioDiarioDeSinais {
                 (rs, i) -> new LinhaPlacar(rs.getString("versao_regra"), rs.getString("recomendacao"),
                         rs.getInt("horizonte"), rs.getLong("avaliados"), rs.getLong("com_direcao"),
                         rs.getLong("acertos"), rs.getBigDecimal("retorno_medio"),
-                        rs.getBigDecimal("excesso_cdi"), rs.getBigDecimal("excesso_bova11")));
+                        rs.getBigDecimal("excesso_cdi"), rs.getBigDecimal("excesso_carteira")));
     }
 
     /**

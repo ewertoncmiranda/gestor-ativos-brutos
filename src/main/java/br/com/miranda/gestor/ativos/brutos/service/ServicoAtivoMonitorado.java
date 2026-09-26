@@ -3,6 +3,7 @@ package br.com.miranda.gestor.ativos.brutos.service;
 import br.com.miranda.gestor.ativos.brutos.external.AtivoMonitoradoEntity;
 import br.com.miranda.gestor.ativos.brutos.external.TipoColeta;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioAtivoMonitorado;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioIdentidadeAtivo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,13 +29,27 @@ public class ServicoAtivoMonitorado {
     private static final int INTERVALO_REFERENCIA_SEGUNDOS = 3600;
 
     private final RepositorioAtivoMonitorado repositorio;
+    private final RepositorioIdentidadeAtivo repositorioIdentidade;
+
+    /**
+     * Codigo canonico do ativo (ELET3 -> AXIA3). Todo registro passa por aqui:
+     * o universo guarda um codigo so por empresa, o mesmo que a BRAPI devolve.
+     */
+    public String canonizar(String codigoAtivo) {
+        String simbolo = codigoAtivo.trim().toUpperCase();
+        String canonico = repositorioIdentidade.canonico(simbolo);
+        if (!canonico.equals(simbolo)) {
+            log.info("{} - {} e codigo antigo; usando o canonico {}", SERVICO, simbolo, canonico);
+        }
+        return canonico;
+    }
 
     /**
      * Registra um ativo para monitoramento recorrente (cotacao + serie historica a cada
      * INTERVALO_PADRAO_SEGUNDOS). Se o ativo ja estiver cadastrado, so reativa.
      */
     public AtivoMonitoradoEntity registrar(String codigoAtivo) {
-        String simbolo = codigoAtivo.trim().toUpperCase();
+        String simbolo = canonizar(codigoAtivo);
 
         AtivoMonitoradoEntity entidade = repositorio.findBySimbolo(simbolo)
                 .orElseGet(() -> {
@@ -62,7 +77,7 @@ public class ServicoAtivoMonitorado {
      * rebaixa um ativo que ja esta sendo acompanhado de perto.
      */
     public void registrarReferenciaSetor(String codigoAtivo) {
-        String simbolo = codigoAtivo.trim().toUpperCase();
+        String simbolo = canonizar(codigoAtivo);
         if (repositorio.findBySimbolo(simbolo).isPresent()) {
             return;
         }

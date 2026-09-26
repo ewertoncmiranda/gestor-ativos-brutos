@@ -70,12 +70,14 @@ class ServicoDiarioDeSinaisTest {
                 new Sinal(7, "PETR4", SEGUNDA, "2026.09.26-1", "COMPRA_FORTE", "BAIXO", 80, new BigDecimal("48.00"))));
         when(repositorio.resultadosDe(List.of(7L))).thenReturn(List.of(
                 new Resultado(7, 21, SEGUNDA.plusDays(30), new BigDecimal("0.031"), new BigDecimal("0.02"),
-                        null, true, false)));
+                        new BigDecimal("0.011"), 27, true, false)));
 
         DiarioDeSinaisDTO.SinalNaLinhaDoTempo sinal = servico.montar("petr4", 50).linhaDoTempo().get(0);
 
         assertEquals(1, sinal.direcao());
         assertEquals(Boolean.TRUE, sinal.resultados().get(21).acerto());
+        assertEquals(27, sinal.resultados().get(21).ativosNaCarteira());
+        assertEquals(new BigDecimal("0.011"), sinal.resultados().get(21).excessoCarteira());
         assertNull(sinal.resultados().get(63)); // ainda pendente
         verify(repositorio).sinaisRecentes("PETR4", 50);
     }

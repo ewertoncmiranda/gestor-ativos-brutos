@@ -14,7 +14,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import br.com.miranda.gestor.ativos.brutos.external.AtivoMonitoradoEntity;
+import br.com.miranda.gestor.ativos.brutos.external.CotacaoAtualEntity;
+
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.CONTROLADOR;
 
@@ -97,12 +103,17 @@ public class AtivoController {
     }
 
     /**
-     * Lista os ativos cadastrados para monitoramento recorrente.
+     * Lista os ativos cadastrados para monitoramento recorrente, com o par
+     * preco anterior/atual (e desde quando cada um vale) lido do cache de
+     * cotacao - uma unica consulta pra todos, nao uma por simbolo.
      */
     @GetMapping("/registrados")
     public ResponseEntity<List<AtivoMonitoradoDTO>> listarRegistrados() {
+        Map<String, CotacaoAtualEntity> cotacoesPorSimbolo = repositorioCotacaoAtual.findAll().stream()
+                .collect(Collectors.toMap(CotacaoAtualEntity::getSimbolo, Function.identity()));
+
         List<AtivoMonitoradoDTO> registrados = servicoAtivoMonitorado.listar().stream()
-                .map(AtivoMonitoradoDTO::de)
+                .map((AtivoMonitoradoEntity entidade) -> AtivoMonitoradoDTO.de(entidade, cotacoesPorSimbolo.get(entidade.getSimbolo())))
                 .toList();
         return ResponseEntity.ok(registrados);
     }
