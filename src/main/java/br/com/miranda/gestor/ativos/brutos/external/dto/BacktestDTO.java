@@ -27,6 +27,9 @@ public record BacktestDTO(Execucao execucao, List<Linha> placar, int amostraMini
                         IntervaloConfianca.Intervalo icExcessoCarteira,
                         // janelas com retorno ajustado por provento (infra#TASK-36); a fonte
                         // so devolve os ~12 meses anteriores a cada coleta
-                        int janelasComProvento) {
+                        int janelasComProvento,
+                        // BOOTSTRAP_BLOCOS (meses reamostrados em blocos, infra#TASK-31) ou
+                        // ANALITICO (Wilson / erro-padrao, supoe janelas independentes)
+                        String metodoIntervalo) {
     }
 }

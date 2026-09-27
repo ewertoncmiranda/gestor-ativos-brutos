@@ -47,10 +47,24 @@ public class ServicoBacktest {
         return new BacktestDTO.Linha(l.versaoRegra(), l.periodo(), l.recomendacao(), direcao, l.horizonte(),
                 l.avaliados(), taxaAcerto, l.taxaBase(), l.retornoMedio(), l.excessoMedioCdi(),
                 l.excessoMedioCarteira(), l.avaliados() >= ServicoDiarioDeSinais.AMOSTRA_MINIMA,
-                l.acertos() == null ? null : IntervaloConfianca.wilson(l.acertos(), l.avaliados()),
+                bootstrap(l.icAcertoInferior(), l.icAcertoSuperior(),
+                        l.acertos() == null ? null : IntervaloConfianca.wilson(l.acertos(), l.avaliados())),
                 IntervaloConfianca.media(l.excessoMedioCdi(), l.desvioExcessoCdi(), l.nExcessoCdi()),
-                IntervaloConfianca.media(l.excessoMedioCarteira(), l.desvioExcessoCarteira(), l.nExcessoCarteira()),
-                l.janelasComProvento());
+                bootstrap(l.icExcessoCarteiraInferior(), l.icExcessoCarteiraSuperior(),
+                        IntervaloConfianca.media(l.excessoMedioCarteira(), l.desvioExcessoCarteira(),
+                                l.nExcessoCarteira())),
+                l.janelasComProvento(),
+                l.icAcertoInferior() != null || l.icExcessoCarteiraInferior() != null ? "BOOTSTRAP_BLOCOS" : "ANALITICO");
+    }
+
+    /** Prefere o intervalo do bootstrap em blocos (gravado pelo backtest); sem ele, o analitico. */
+    private static IntervaloConfianca.Intervalo bootstrap(BigDecimal inferior, BigDecimal superior,
+                                                          IntervaloConfianca.Intervalo analitico) {
+        if (inferior == null || superior == null) {
+            return analitico;
+        }
+        return new IntervaloConfianca.Intervalo(inferior.setScale(4, RoundingMode.HALF_UP),
+                superior.setScale(4, RoundingMode.HALF_UP));
     }
 
     private JsonNode json(String texto) {

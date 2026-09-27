@@ -36,7 +36,10 @@ public class RepositorioBacktest {
                         Integer acertos, BigDecimal taxaBase, BigDecimal retornoMedio,
                         BigDecimal excessoMedioCdi, BigDecimal excessoMedioCarteira,
                         Long nExcessoCdi, BigDecimal desvioExcessoCdi,
-                        Long nExcessoCarteira, BigDecimal desvioExcessoCarteira, int janelasComProvento) {
+                        Long nExcessoCarteira, BigDecimal desvioExcessoCarteira, int janelasComProvento,
+                        BigDecimal icAcertoInferior, BigDecimal icAcertoSuperior,
+                        BigDecimal icExcessoCarteiraInferior, BigDecimal icExcessoCarteiraSuperior,
+                        Integer mesesBootstrap) {
     }
 
     public Optional<Execucao> ultimaExecucao() {
@@ -61,7 +64,11 @@ public class RepositorioBacktest {
                         rs.getBigDecimal("excesso_medio_carteira"),
                         rs.getObject("n_excesso_cdi", Long.class), rs.getBigDecimal("desvio_excesso_cdi"),
                         rs.getObject("n_excesso_carteira", Long.class), rs.getBigDecimal("desvio_excesso_carteira"),
-                        rs.getInt("janelas_com_provento")));
+                        rs.getInt("janelas_com_provento"),
+                        rs.getBigDecimal("ic_acerto_inferior"), rs.getBigDecimal("ic_acerto_superior"),
+                        rs.getBigDecimal("ic_excesso_carteira_inferior"),
+                        rs.getBigDecimal("ic_excesso_carteira_superior"),
+                        rs.getObject("meses_bootstrap", Integer.class)));
     }
 
     private static LocalDate data(ResultSet rs, String coluna) throws SQLException {
