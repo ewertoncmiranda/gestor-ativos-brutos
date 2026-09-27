@@ -1,5 +1,7 @@
 package br.com.miranda.gestor.ativos.brutos.external.dto;
 
+import br.com.miranda.gestor.ativos.brutos.tools.IntervaloConfianca;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -41,7 +43,12 @@ public record DiarioDeSinaisDTO(
             BigDecimal retornoMedio,
             BigDecimal excessoMedioCdi,
             BigDecimal excessoMedioCarteira,
-            boolean amostraSuficiente) {
+            boolean amostraSuficiente,
+            // Intervalos de 95% (infra#TASK-30): acerto por Wilson, excesso por
+            // media +- 1,96 erro-padrao. Null quando nao ha amostra para calcular.
+            IntervaloConfianca.Intervalo icAcerto,
+            IntervaloConfianca.Intervalo icExcessoCdi,
+            IntervaloConfianca.Intervalo icExcessoCarteira) {
     }
 
     public record SinalNaLinhaDoTempo(

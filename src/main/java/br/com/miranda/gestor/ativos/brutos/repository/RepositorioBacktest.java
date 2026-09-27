@@ -34,7 +34,9 @@ public class RepositorioBacktest {
 
     public record Linha(String versaoRegra, String periodo, String recomendacao, int horizonte, int avaliados,
                         Integer acertos, BigDecimal taxaBase, BigDecimal retornoMedio,
-                        BigDecimal excessoMedioCdi, BigDecimal excessoMedioCarteira) {
+                        BigDecimal excessoMedioCdi, BigDecimal excessoMedioCarteira,
+                        Long nExcessoCdi, BigDecimal desvioExcessoCdi,
+                        Long nExcessoCarteira, BigDecimal desvioExcessoCarteira) {
     }
 
     public Optional<Execucao> ultimaExecucao() {
@@ -56,7 +58,9 @@ public class RepositorioBacktest {
                         rs.getString("recomendacao"), rs.getInt("horizonte"), rs.getInt("avaliados"),
                         rs.getObject("acertos", Integer.class), rs.getBigDecimal("taxa_base"),
                         rs.getBigDecimal("retorno_medio"), rs.getBigDecimal("excesso_medio_cdi"),
-                        rs.getBigDecimal("excesso_medio_carteira")));
+                        rs.getBigDecimal("excesso_medio_carteira"),
+                        rs.getObject("n_excesso_cdi", Long.class), rs.getBigDecimal("desvio_excesso_cdi"),
+                        rs.getObject("n_excesso_carteira", Long.class), rs.getBigDecimal("desvio_excesso_carteira")));
     }
 
     private static LocalDate data(ResultSet rs, String coluna) throws SQLException {

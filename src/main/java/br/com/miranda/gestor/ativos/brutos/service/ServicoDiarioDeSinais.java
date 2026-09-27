@@ -5,6 +5,7 @@ import br.com.miranda.gestor.ativos.brutos.external.dto.DiarioDeSinaisDTO.LinhaP
 import br.com.miranda.gestor.ativos.brutos.external.dto.DiarioDeSinaisDTO.ResultadoDoHorizonte;
 import br.com.miranda.gestor.ativos.brutos.external.dto.DiarioDeSinaisDTO.SinalNaLinhaDoTempo;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioDiarioDeSinais;
+import br.com.miranda.gestor.ativos.brutos.tools.IntervaloConfianca;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -86,7 +87,11 @@ public class ServicoDiarioDeSinais {
                             direcao == 0 ? null : arredondar(base),
                             arredondar(l.retornoMedio()), arredondar(l.excessoMedioCdi()),
                             arredondar(l.excessoMedioCarteira()),
-                            l.avaliados() >= AMOSTRA_MINIMA);
+                            l.avaliados() >= AMOSTRA_MINIMA,
+                            direcao == 0 ? null : IntervaloConfianca.wilson(l.acertos(), l.comDirecao()),
+                            IntervaloConfianca.media(l.excessoMedioCdi(), l.desvioExcessoCdi(), l.nExcessoCdi()),
+                            IntervaloConfianca.media(l.excessoMedioCarteira(), l.desvioExcessoCarteira(),
+                                    l.nExcessoCarteira()));
                 })
                 .sorted(Comparator.comparing(LinhaPlacar::versaoRegra, Comparator.reverseOrder())
                         .thenComparing(LinhaPlacar::direcao, Comparator.reverseOrder())
