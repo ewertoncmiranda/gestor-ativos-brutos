@@ -3,6 +3,7 @@ package br.com.miranda.gestor.ativos.brutos.entrypoint.schedule;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoCache;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoIndicadoresIbge;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoIndicesMacro;
+import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoProventos;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -31,6 +32,7 @@ public class AgendadorCacheAtivos {
     private final ServicoAtualizacaoCache servicoAtualizacaoCache;
     private final ServicoAtualizacaoIndicesMacro servicoAtualizacaoIndicesMacro;
     private final ServicoAtualizacaoIndicadoresIbge servicoAtualizacaoIndicadoresIbge;
+    private final ServicoAtualizacaoProventos servicoAtualizacaoProventos;
 
     @Scheduled(fixedDelay = 5000)
     public void atualizarCotacoes() {
@@ -80,6 +82,20 @@ public class AgendadorCacheAtivos {
             servicoAtualizacaoIndicadoresIbge.atualizarIndicadores();
         } catch (Exception e) {
             log.error("{}-Erro no ciclo de atualizacao de indicadores IBGE: {}", AGENDADOR, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Diario: proventos sao aprovados esporadicamente, mas so os ultimos 12
+     * meses vem em cada consulta (limite da B3) - rodar todo dia e o que
+     * constroi historico real com o tempo, sem sobrecarregar a fonte.
+     */
+    @Scheduled(fixedDelay = 86_400_000)
+    public void atualizarProventos() {
+        try {
+            servicoAtualizacaoProventos.atualizarProventos();
+        } catch (Exception e) {
+            log.error("{}-Erro no ciclo de atualizacao de proventos: {}", AGENDADOR, e.getMessage(), e);
         }
     }
 }
