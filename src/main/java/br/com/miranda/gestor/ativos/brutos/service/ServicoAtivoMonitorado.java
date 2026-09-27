@@ -19,7 +19,9 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERV
 @RequiredArgsConstructor
 public class ServicoAtivoMonitorado {
 
-    private static final int INTERVALO_PADRAO_SEGUNDOS = 30;
+    // Favorito: cotacao intradiaria a cada 15 min, so no pregao (infra V13).
+    // Era 30 s - um favorito sozinho estourava a cota gratuita da BRAPI.
+    private static final int INTERVALO_PADRAO_SEGUNDOS = 900;
 
     // Universo de referencia por setor: cotacao serve so pra visao "Mercado por
     // setor", nao pra decisao de trading - 1h de atraso e aceitavel e evita
@@ -84,7 +86,7 @@ public class ServicoAtivoMonitorado {
 
         AtivoMonitoradoEntity nova = new AtivoMonitoradoEntity();
         nova.setSimbolo(simbolo);
-        nova.setTipoColeta(TipoColeta.COTACAO);
+        nova.setTipoColeta(TipoColeta.REFERENCIA_DIARIA);
         nova.setIntervaloSegundos(INTERVALO_REFERENCIA_SEGUNDOS);
         nova.setAtivo(Boolean.TRUE);
         nova.setAtualizadoEm(LocalDateTime.now());
@@ -102,7 +104,8 @@ public class ServicoAtivoMonitorado {
      * monitorado de verdade, cadastrado pelo usuario, nunca desativado por aqui.
      */
     public void desativarReferenciasObsoletas(Set<String> tickersValidos) {
-        repositorio.findByTipoColeta(TipoColeta.COTACAO).stream()
+        java.util.stream.Stream.of(TipoColeta.REFERENCIA_DIARIA, TipoColeta.COTACAO)
+                .flatMap(tipo -> repositorio.findByTipoColeta(tipo).stream())
                 .filter(entidade -> entidade.getAtivo() && !tickersValidos.contains(entidade.getSimbolo()))
                 .forEach(entidade -> {
                     entidade.setAtivo(Boolean.FALSE);

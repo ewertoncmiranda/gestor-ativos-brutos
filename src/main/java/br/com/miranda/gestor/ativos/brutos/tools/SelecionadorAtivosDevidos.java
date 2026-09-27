@@ -14,9 +14,14 @@ public final class SelecionadorAtivosDevidos {
     }
 
     public static boolean estaDevido(LocalDateTime atualizadoEm, long intervaloSegundos) {
+        return estaDevido(atualizadoEm, intervaloSegundos, LocalDateTime.now());
+    }
+
+    /** Mesma regra com o "agora" explicito - para quem decide com um relogio injetado. */
+    public static boolean estaDevido(LocalDateTime atualizadoEm, long intervaloSegundos, LocalDateTime agora) {
         if (atualizadoEm == null) {
             return true;
         }
-        return LocalDateTime.now().isAfter(atualizadoEm.plusSeconds(intervaloSegundos));
+        return agora.isAfter(atualizadoEm.plusSeconds(intervaloSegundos));
     }
 }

@@ -37,10 +37,14 @@ public class ServicoSaudeDados {
 
     // Prazos: rotina + folga de fim de semana/feriado.
     private static final List<Definicao> FONTES = List.of(
-            new Definicao("COTACAO", "Cotação (BRAPI)", 3, true,
-                    "Verificar o gestor-ativos-brutos e a cota da BRAPI."),
-            new Definicao("VELAS", "Velas diárias (BRAPI)", 100, true,
-                    "Verificar o gestor-ativos-brutos (histórico diário)."),
+            // BRAPI so para os favoritos e so no pregao (infra V13): fim de semana
+            // sem atualizacao e normal, e sem chave o sistema segue pelo COTAHIST.
+            new Definicao("COTACAO", "Cotação intradiária dos favoritos (BRAPI)", 80, false,
+                    "Verificar a chave e a cota da BRAPI no gestor-ativos-brutos."),
+            new Definicao("VELAS", "Velas intradiárias dos favoritos (BRAPI)", 100, false,
+                    "Verificar o gestor-ativos-brutos (histórico diário dos favoritos)."),
+            new Definicao("INSIGHTS_BASE", "Insights diários da camada Base (COTAHIST)", 100, true,
+                    "Rotina 'B3 - Cargas ETL' ou: gerar-insights python -m app.insights_diarios"),
             new Definicao("CDI", "CDI (Banco Central)", 120, true,
                     "Reiniciar o gestor: completa o histórico do CDI na subida."),
             new Definicao("CVM_DFP", "Balanços anuais (CVM DFP)", 192, true,
