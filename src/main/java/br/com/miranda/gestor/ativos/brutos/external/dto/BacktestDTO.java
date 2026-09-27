@@ -24,6 +24,9 @@ public record BacktestDTO(Execucao execucao, List<Linha> placar, int amostraMini
                         int avaliados, BigDecimal taxaAcerto, BigDecimal taxaBase, BigDecimal retornoMedio,
                         BigDecimal excessoMedioCdi, BigDecimal excessoMedioCarteira, boolean amostraSuficiente,
                         IntervaloConfianca.Intervalo icAcerto, IntervaloConfianca.Intervalo icExcessoCdi,
-                        IntervaloConfianca.Intervalo icExcessoCarteira) {
+                        IntervaloConfianca.Intervalo icExcessoCarteira,
+                        // janelas com retorno ajustado por provento (infra#TASK-36); a fonte
+                        // so devolve os ~12 meses anteriores a cada coleta
+                        int janelasComProvento) {
     }
 }

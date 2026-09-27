@@ -49,7 +49,8 @@ public class ServicoBacktest {
                 l.excessoMedioCarteira(), l.avaliados() >= ServicoDiarioDeSinais.AMOSTRA_MINIMA,
                 l.acertos() == null ? null : IntervaloConfianca.wilson(l.acertos(), l.avaliados()),
                 IntervaloConfianca.media(l.excessoMedioCdi(), l.desvioExcessoCdi(), l.nExcessoCdi()),
-                IntervaloConfianca.media(l.excessoMedioCarteira(), l.desvioExcessoCarteira(), l.nExcessoCarteira()));
+                IntervaloConfianca.media(l.excessoMedioCarteira(), l.desvioExcessoCarteira(), l.nExcessoCarteira()),
+                l.janelasComProvento());
     }
 
     private JsonNode json(String texto) {
