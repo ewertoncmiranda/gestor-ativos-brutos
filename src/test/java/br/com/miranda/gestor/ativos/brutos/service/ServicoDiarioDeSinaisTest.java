@@ -86,8 +86,8 @@ class ServicoDiarioDeSinaisTest {
     void acerto_de_venda_e_medido_contra_a_taxa_base_de_queda() {
         List<DiarioDeSinaisDTO.LinhaPlacar> placar = ServicoDiarioDeSinais.montarPlacar(
                 List.of(
-                        new LinhaPlacar("v1", "COMPRA_FORTE", 21, 40, 40, 26, null, null, null),
-                        new LinhaPlacar("v1", "VENDA_VALUATION", 21, 10, 10, 6, null, null, null)),
+                        new LinhaPlacar("v1", "COMPRA_FORTE", 21, 40, 40, 26, null, null, null, 0, null, 0, null),
+                        new LinhaPlacar("v1", "VENDA_VALUATION", 21, 10, 10, 6, null, null, null, 0, null, 0, null)),
                 Map.of(21, new BigDecimal("0.55")));
 
         DiarioDeSinaisDTO.LinhaPlacar compra = placar.get(0);
@@ -102,7 +102,7 @@ class ServicoDiarioDeSinaisTest {
     @Test
     void recomendacao_sem_direcao_nao_tem_taxa_de_acerto_nem_base() {
         List<DiarioDeSinaisDTO.LinhaPlacar> placar = ServicoDiarioDeSinais.montarPlacar(
-                List.of(new LinhaPlacar("v1", "MANTER", 63, 12, 0, 0, new BigDecimal("0.01"), null, null)),
+                List.of(new LinhaPlacar("v1", "MANTER", 63, 12, 0, 0, new BigDecimal("0.01"), null, null, 0, null, 0, null)),
                 Map.of(63, new BigDecimal("0.5")));
 
         assertNull(placar.get(0).taxaAcerto());
@@ -113,8 +113,8 @@ class ServicoDiarioDeSinaisTest {
     @Test
     void versao_mais_nova_aparece_primeiro_no_placar() {
         List<DiarioDeSinaisDTO.LinhaPlacar> placar = ServicoDiarioDeSinais.montarPlacar(
-                List.of(new LinhaPlacar("2026.09.26-1", "MANTER", 21, 1, 0, 0, null, null, null),
-                        new LinhaPlacar("2026.10.15-1", "MANTER", 21, 1, 0, 0, null, null, null)),
+                List.of(new LinhaPlacar("2026.09.26-1", "MANTER", 21, 1, 0, 0, null, null, null, 0, null, 0, null),
+                        new LinhaPlacar("2026.10.15-1", "MANTER", 21, 1, 0, 0, null, null, null, 0, null, 0, null)),
                 Map.of());
 
         assertEquals("2026.10.15-1", placar.get(0).versaoRegra());

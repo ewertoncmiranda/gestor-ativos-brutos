@@ -1,5 +1,6 @@
 package br.com.miranda.gestor.ativos.brutos.external.dto;
 
+import br.com.miranda.gestor.ativos.brutos.tools.IntervaloConfianca;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
@@ -21,6 +22,11 @@ public record BacktestDTO(Execucao execucao, List<Linha> placar, int amostraMini
     /** periodo: CALIBRACAO (ate o corte) ou TESTE (depois dele, congelado). */
     public record Linha(String versaoRegra, String periodo, String recomendacao, int direcao, int horizonte,
                         int avaliados, BigDecimal taxaAcerto, BigDecimal taxaBase, BigDecimal retornoMedio,
-                        BigDecimal excessoMedioCdi, BigDecimal excessoMedioCarteira, boolean amostraSuficiente) {
+                        BigDecimal excessoMedioCdi, BigDecimal excessoMedioCarteira, boolean amostraSuficiente,
+                        IntervaloConfianca.Intervalo icAcerto, IntervaloConfianca.Intervalo icExcessoCdi,
+                        IntervaloConfianca.Intervalo icExcessoCarteira,
+                        // janelas com retorno ajustado por provento (infra#TASK-36); a fonte
+                        // so devolve os ~12 meses anteriores a cada coleta
+                        int janelasComProvento) {
     }
 }

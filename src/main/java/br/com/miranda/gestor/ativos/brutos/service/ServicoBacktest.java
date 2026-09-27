@@ -2,6 +2,7 @@ package br.com.miranda.gestor.ativos.brutos.service;
 
 import br.com.miranda.gestor.ativos.brutos.external.dto.BacktestDTO;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioBacktest;
+import br.com.miranda.gestor.ativos.brutos.tools.IntervaloConfianca;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -45,7 +46,11 @@ public class ServicoBacktest {
                 : BigDecimal.valueOf(l.acertos()).divide(BigDecimal.valueOf(l.avaliados()), 4, RoundingMode.HALF_UP);
         return new BacktestDTO.Linha(l.versaoRegra(), l.periodo(), l.recomendacao(), direcao, l.horizonte(),
                 l.avaliados(), taxaAcerto, l.taxaBase(), l.retornoMedio(), l.excessoMedioCdi(),
-                l.excessoMedioCarteira(), l.avaliados() >= ServicoDiarioDeSinais.AMOSTRA_MINIMA);
+                l.excessoMedioCarteira(), l.avaliados() >= ServicoDiarioDeSinais.AMOSTRA_MINIMA,
+                l.acertos() == null ? null : IntervaloConfianca.wilson(l.acertos(), l.avaliados()),
+                IntervaloConfianca.media(l.excessoMedioCdi(), l.desvioExcessoCdi(), l.nExcessoCdi()),
+                IntervaloConfianca.media(l.excessoMedioCarteira(), l.desvioExcessoCarteira(), l.nExcessoCarteira()),
+                l.janelasComProvento());
     }
 
     private JsonNode json(String texto) {

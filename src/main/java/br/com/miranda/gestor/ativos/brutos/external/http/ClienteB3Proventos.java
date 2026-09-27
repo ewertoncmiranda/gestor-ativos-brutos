@@ -21,10 +21,12 @@ import java.util.List;
  * confirmado ao vivo em 27/09/2026 navegando o proprio site da B3 e
  * capturando a chamada real (GetListedSupplementCompany), nao adivinhado.
  *
- * Limitacao conhecida: a B3 so devolve os proventos aprovados nos ultimos 12
- * meses (ou o ultimo, se mais antigo que isso) - nao serve pra backfill
- * historico de anos anteriores sozinho. Rodado periodicamente (mesmo espirito
- * do diario de sinais), acumula historico real dia a dia a partir de agora.
+ * Limitacao conhecida: a B3 so devolve os proventos aprovados nos ~12 meses
+ * anteriores a CADA coleta (janela movel, nao um corte fixo - confirmado: a
+ * primeira coleta em 27/09/2026 trouxe eventos desde 26/09/2025), ou o
+ * ultimo, se mais antigo que isso - nao serve pra backfill historico de anos
+ * anteriores sozinho. Rodado periodicamente (mesmo espirito do diario de
+ * sinais), a janela vai andando pra frente a cada coleta.
  */
 @Slf4j
 @Service

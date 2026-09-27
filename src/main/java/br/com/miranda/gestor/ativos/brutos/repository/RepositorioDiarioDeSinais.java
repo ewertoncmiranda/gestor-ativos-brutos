@@ -38,9 +38,12 @@ public class RepositorioDiarioDeSinais {
                             Boolean acerto, boolean eventoSuspeito) {
     }
 
+    /** nExcesso* e desvioExcesso*: para o intervalo de confianca do excesso (infra#TASK-30). */
     public record LinhaPlacar(String versaoRegra, String recomendacao, int horizonte, long avaliados,
                               long comDirecao, long acertos, BigDecimal retornoMedio,
-                              BigDecimal excessoMedioCdi, BigDecimal excessoMedioCarteira) {
+                              BigDecimal excessoMedioCdi, BigDecimal excessoMedioCarteira,
+                              long nExcessoCdi, BigDecimal desvioExcessoCdi,
+                              long nExcessoCarteira, BigDecimal desvioExcessoCarteira) {
     }
 
     public record Totais(long sinais, long ativos, LocalDate primeiroPregao, LocalDate ultimoPregao,
@@ -92,7 +95,10 @@ public class RepositorioDiarioDeSinais {
                 "SELECT s.versao_regra, s.recomendacao, r.horizonte, COUNT(*) avaliados, "
                         + "SUM(r.acerto IS NOT NULL) com_direcao, SUM(r.acerto = TRUE) acertos, "
                         + "AVG(r.retorno_liquido) retorno_medio, AVG(r.excesso_cdi) excesso_cdi, "
-                        + "AVG(r.excesso_carteira) excesso_carteira "
+                        + "AVG(r.excesso_carteira) excesso_carteira, "
+                        + "COUNT(r.excesso_cdi) n_excesso_cdi, STDDEV_SAMP(r.excesso_cdi) desvio_excesso_cdi, "
+                        + "COUNT(r.excesso_carteira) n_excesso_carteira, "
+                        + "STDDEV_SAMP(r.excesso_carteira) desvio_excesso_carteira "
                         + "FROM sinal_resultado r JOIN sinal_diario s ON s.id = r.sinal_id "
                         + "WHERE r.evento_suspeito = FALSE AND (:simbolo IS NULL OR s.simbolo = :simbolo) "
                         + "GROUP BY s.versao_regra, s.recomendacao, r.horizonte",
@@ -100,7 +106,9 @@ public class RepositorioDiarioDeSinais {
                 (rs, i) -> new LinhaPlacar(rs.getString("versao_regra"), rs.getString("recomendacao"),
                         rs.getInt("horizonte"), rs.getLong("avaliados"), rs.getLong("com_direcao"),
                         rs.getLong("acertos"), rs.getBigDecimal("retorno_medio"),
-                        rs.getBigDecimal("excesso_cdi"), rs.getBigDecimal("excesso_carteira")));
+                        rs.getBigDecimal("excesso_cdi"), rs.getBigDecimal("excesso_carteira"),
+                        rs.getLong("n_excesso_cdi"), rs.getBigDecimal("desvio_excesso_cdi"),
+                        rs.getLong("n_excesso_carteira"), rs.getBigDecimal("desvio_excesso_carteira")));
     }
 
     /**
