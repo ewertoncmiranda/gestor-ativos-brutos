@@ -45,6 +45,9 @@ public class RepositorioSaudeDados {
         saida.put("VELAS", inicioDoDia("SELECT MAX(data) FROM candle_diario"));
         saida.put("CDI", inicioDoDia("SELECT MAX(data) FROM indice_macro WHERE codigo_serie = 'CDI'"));
         saida.put("DIARIO", instante("SELECT MAX(registrado_em) FROM sinal_diario"));
+        // Camada Base (infra V13): insight diario sobre o preco oficial.
+        saida.put("INSIGHTS_BASE", instante("SELECT MAX(data_analise) FROM insight_acao "
+                + "WHERE JSON_UNQUOTE(JSON_EXTRACT(detalhes_json, '$.fonte_preco')) = 'B3_COTAHIST'"));
         for (String fonte : List.of("CVM_DFP", "CVM_TTM", "CVM_IPE", "B3_COTAHIST", "BACKUP_MYSQL", "BACKTEST")) {
             saida.put(fonte, instante(
                     "SELECT MAX(finalizado_em) FROM etl_execucao WHERE fonte = '" + fonte + "' "
@@ -72,7 +75,11 @@ public class RepositorioSaudeDados {
     public List<CoberturaAtivo> cobertura() {
         return jdbc.query(
                 "SELECT a.simbolo, a.tipo_coleta, t.cnpj, "
-                        + " (SELECT MAX(c.data) FROM candle_diario c WHERE c.simbolo = a.simbolo) ultima_vela, "
+                        // vela da BRAPI (favoritos) ou fechamento oficial (todos, infra V13)
+                        + " NULLIF(GREATEST("
+                        + "   COALESCE((SELECT MAX(c.data) FROM candle_diario c WHERE c.simbolo = a.simbolo), '1900-01-01'),"
+                        + "   COALESCE((SELECT MAX(b.data_pregao) FROM cotacao_b3_diaria b WHERE b.simbolo = a.simbolo), '1900-01-01')"
+                        + " ), '1900-01-01') ultima_vela, "
                         + " (SELECT q.atualizado_em FROM cotacao_atual q WHERE q.simbolo = a.simbolo) cotacao_em, "
                         + " (SELECT MAX(f.periodo) FROM indicador_fundamentalista f "
                         + "   WHERE f.simbolo = a.simbolo AND f.tipo_periodo = 'ANUAL') periodo_anual, "

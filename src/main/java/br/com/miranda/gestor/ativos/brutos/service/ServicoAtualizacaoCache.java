@@ -1,5 +1,6 @@
 package br.com.miranda.gestor.ativos.brutos.service;
 
+import br.com.miranda.gestor.ativos.brutos.service.coleta.SeletorDeColetaBrapi;
 import br.com.miranda.gestor.ativos.brutos.external.AtivoMonitoradoEntity;
 import br.com.miranda.gestor.ativos.brutos.external.Ativo;
 import br.com.miranda.gestor.ativos.brutos.external.CandleDiarioEntity;
@@ -68,6 +69,8 @@ public class ServicoAtualizacaoCache {
     private final RepositorioCandleDiario repositorioCandleDiario;
     private final RepositorioPerfilEmpresaCache repositorioPerfilEmpresaCache;
     private final ServicoAtivoMonitorado servicoAtivoMonitorado;
+    // Quem consulta a BRAPI e quando: so os favoritos, no pregao (infra V13).
+    private final SeletorDeColetaBrapi seletorDeColeta;
     private final ModelMapper mapper = new ModelMapper();
 
     @Value("${brapi.lote.tamanho:1}")
@@ -86,7 +89,8 @@ public class ServicoAtualizacaoCache {
             RepositorioCotacaoAtual repositorioCotacaoAtual,
             RepositorioCandleDiario repositorioCandleDiario,
             RepositorioPerfilEmpresaCache repositorioPerfilEmpresaCache,
-            ServicoAtivoMonitorado servicoAtivoMonitorado
+            ServicoAtivoMonitorado servicoAtivoMonitorado,
+            SeletorDeColetaBrapi seletorDeColeta
     ) {
         this.clienteBrApi = clienteBrApi;
         this.filaMensagens = filaMensagens;
@@ -95,6 +99,7 @@ public class ServicoAtualizacaoCache {
         this.repositorioCandleDiario = repositorioCandleDiario;
         this.repositorioPerfilEmpresaCache = repositorioPerfilEmpresaCache;
         this.servicoAtivoMonitorado = servicoAtivoMonitorado;
+        this.seletorDeColeta = seletorDeColeta;
     }
 
     /**
@@ -113,8 +118,7 @@ public class ServicoAtualizacaoCache {
         Map<String, AtivoMonitoradoEntity> porSimbolo = ativos.stream()
                 .collect(Collectors.toMap(AtivoMonitoradoEntity::getSimbolo, a -> a));
 
-        List<String> devidos = ativos.stream()
-                .filter(a -> SelecionadorAtivosDevidos.estaDevido(ultimaAtualizacao.get(a.getSimbolo()), a.getIntervaloSegundos()))
+        List<String> devidos = seletorDeColeta.devidos(ativos, ultimaAtualizacao).stream()
                 .map(AtivoMonitoradoEntity::getSimbolo)
                 .toList();
 
@@ -179,9 +183,10 @@ public class ServicoAtualizacaoCache {
      * uma vez por dia (candles de dias passados sao imutaveis, nunca regravam).
      */
     public void atualizarHistoricoDiario() {
-        List<AtivoMonitoradoEntity> ativos = repositorioAtivoMonitorado.findByAtivoTrue().stream()
-                .filter(a -> a.getTipoColeta() == TipoColeta.COTACAO_E_HISTORICO)
-                .toList();
+        // Candle do dia so enquanto ele muda (pregao aberto) e so dos favoritos.
+        List<AtivoMonitoradoEntity> ativos = seletorDeColeta.pregaoAberto()
+                ? seletorDeColeta.elegiveis(repositorioAtivoMonitorado.findByAtivoTrue())
+                : List.of();
         if (ativos.isEmpty()) {
             return;
         }
@@ -238,7 +243,8 @@ public class ServicoAtualizacaoCache {
      * contrato (usado tambem pelo fallback de primeira visita).
      */
     public void atualizarPerfilEmpresa() {
-        List<AtivoMonitoradoEntity> ativos = repositorioAtivoMonitorado.findByAtivoTrue();
+        // Perfil da BRAPI so dos favoritos; nome e setor do resto vem da CVM.
+        List<AtivoMonitoradoEntity> ativos = seletorDeColeta.elegiveis(repositorioAtivoMonitorado.findByAtivoTrue());
         if (ativos.isEmpty()) {
             return;
         }

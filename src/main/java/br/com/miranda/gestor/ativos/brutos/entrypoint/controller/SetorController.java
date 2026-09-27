@@ -1,9 +1,9 @@
 package br.com.miranda.gestor.ativos.brutos.entrypoint.controller;
 
-import br.com.miranda.gestor.ativos.brutos.external.CotacaoAtualEntity;
 import br.com.miranda.gestor.ativos.brutos.external.dto.AtivoSetorDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.SetorDTO;
-import br.com.miranda.gestor.ativos.brutos.repository.RepositorioCotacaoAtual;
+import br.com.miranda.gestor.ativos.brutos.service.cotacao.CotacaoRecente;
+import br.com.miranda.gestor.ativos.brutos.service.cotacao.FonteCotacaoRecente;
 import br.com.miranda.gestor.ativos.brutos.tools.SetoresReferencia;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,16 +14,17 @@ import java.util.Optional;
 
 /**
  * Unica responsabilidade: servir a visao "Mercado por setor" - agrupa o
- * universo de referencia hardcoded ({@link SetoresReferencia}) com a
- * cotacao mais recente de cada ticker, lida do cache (cotacao_atual). Nunca
- * chama a BRAPI: quem mantem esse cache fresco e o AgendadorCacheAtivos,
- * mesmo escritor unico que ja serve o resto do app.
+ * universo de referencia ({@link SetoresReferencia}) com o preco mais recente
+ * de cada ticker. Desde o monitoramento em camadas (infra V13) as referencias
+ * nao consultam mais a BRAPI: o preco vem do fechamento oficial (COTAHIST),
+ * ou da cotacao intradiaria quando o ticker tambem e favorito - quem decide e
+ * a {@link FonteCotacaoRecente}.
  */
 @RestController
 @RequiredArgsConstructor
 public class SetorController {
 
-    private final RepositorioCotacaoAtual repositorioCotacaoAtual;
+    private final FonteCotacaoRecente fonteCotacao;
 
     @GetMapping("/setores")
     public List<SetorDTO> listarSetores() {
@@ -36,12 +37,13 @@ public class SetorController {
     }
 
     private AtivoSetorDTO montarAtivoSetor(String simbolo) {
-        Optional<CotacaoAtualEntity> cotacao = repositorioCotacaoAtual.findBySimbolo(simbolo);
+        Optional<CotacaoRecente> cotacao = fonteCotacao.cotacao(simbolo);
         return AtivoSetorDTO.builder()
                 .simbolo(simbolo)
-                .preco(cotacao.map(CotacaoAtualEntity::getRegularMarketPrice).orElse(null))
-                .variacaoPercent(cotacao.map(CotacaoAtualEntity::getRegularMarketChangePercent).orElse(null))
-                .atualizadoEm(cotacao.map(CotacaoAtualEntity::getAtualizadoEm).orElse(null))
+                .preco(cotacao.map(CotacaoRecente::preco).orElse(null))
+                .variacaoPercent(cotacao.map(CotacaoRecente::variacaoPercent).orElse(null))
+                .atualizadoEm(cotacao.map(CotacaoRecente::referencia).orElse(null))
+                .fonte(cotacao.map(CotacaoRecente::fonte).orElse(null))
                 .build();
     }
 }

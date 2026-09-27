@@ -37,7 +37,9 @@ public class ClienteBrApi {
     private static final String CAMINHO_HISTORICO_ACOES = "/api/v2/stocks/historical";
     private static final String CAMINHO_PERFIL_EMPRESA = "/api/v2/stocks/profile";
 
-    @Value("${brapi.api.key}")
+    // Opcional (2026-09-27): sem chave, nenhuma rotina chama a BRAPI e o
+    // sistema segue com o preco oficial do dia anterior (COTAHIST).
+    @Value("${brapi.api.key:}")
     private String apiKey;
 
     private final RestTemplate restTemplate;
@@ -46,6 +48,11 @@ public class ClienteBrApi {
     public ClienteBrApi(ObjectMapper objectMapper) {
         this.restTemplate = new RestTemplate();
         this.objectMapper = objectMapper;
+    }
+
+    /** Ha chave configurada: sem ela, quem usa a BRAPI se desliga em vez de falhar. */
+    public boolean habilitado() {
+        return apiKey != null && !apiKey.isBlank();
     }
 
     /**

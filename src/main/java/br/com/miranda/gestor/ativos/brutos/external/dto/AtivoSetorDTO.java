@@ -19,4 +19,6 @@ public class AtivoSetorDTO {
     private BigDecimal preco;
     private BigDecimal variacaoPercent;
     private LocalDateTime atualizadoEm;
+    /** B3_COTAHIST (fechamento oficial) ou BRAPI (intradiaria, favoritos) - infra V13. */
+    private String fonte;
 }
