@@ -20,7 +20,12 @@ public interface AtivoBaseDTO {
 
     LocalDate getDataUltimoFechamento();
 
-    Boolean getTemFundamento();
+    // MySQL devolve EXISTS(...) como inteiro (0/1) pelo driver JDBC, nao como
+    // BIT/BOOLEAN - a projecao de interface do Spring Data nao converte Long
+    // para Boolean automaticamente (UnsupportedOperationException em tempo de
+    // serializacao). Long aqui e verdade: no JSON vira 0/1, que o front trata
+    // como truthy/falsy sem diferenca pratica.
+    Long getTemFundamento();
 
-    Boolean getFavorito();
+    Long getFavorito();
 }
