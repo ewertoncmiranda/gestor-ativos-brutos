@@ -47,8 +47,11 @@ public class ServicoAtivoMonitorado {
     }
 
     /**
-     * Registra um ativo para monitoramento recorrente (cotacao + serie historica a cada
-     * INTERVALO_PADRAO_SEGUNDOS). Se o ativo ja estiver cadastrado, so reativa.
+     * Registra um ativo como favorito (cotacao + historico intradiario a cada
+     * INTERVALO_PADRAO_SEGUNDOS). Se o ativo ja existir como referencia de
+     * setor (tipoColeta REFERENCIA_DIARIA/COTACAO, sem BRAPI), promove pra
+     * favorito - sem isso, favoritar um ativo que ja e referencia (ex.:
+     * PETR4) so reativava sem nunca ligar a coleta intradiaria.
      */
     public AtivoMonitoradoEntity registrar(String codigoAtivo) {
         String simbolo = canonizar(codigoAtivo);
@@ -64,6 +67,11 @@ public class ServicoAtivoMonitorado {
                     nova.setAtualizadoEm(LocalDateTime.now());
                     return nova;
                 });
+
+        if (entidade.getTipoColeta() != TipoColeta.COTACAO_E_HISTORICO) {
+            entidade.setTipoColeta(TipoColeta.COTACAO_E_HISTORICO);
+            entidade.setIntervaloSegundos(INTERVALO_PADRAO_SEGUNDOS);
+        }
 
         entidade.setAtivo(Boolean.TRUE);
         AtivoMonitoradoEntity salva = repositorio.save(entidade);
@@ -116,6 +124,28 @@ public class ServicoAtivoMonitorado {
 
     public List<AtivoMonitoradoEntity> listar() {
         return repositorio.findAllByOrderBySimboloAsc();
+    }
+
+    /** Favoritos ativos (tipoColeta=COTACAO_E_HISTORICO) - a lista da tela de Favoritos. */
+    public List<AtivoMonitoradoEntity> listarFavoritos() {
+        return repositorio.findByTipoColetaAndAtivoTrueOrderBySimboloAsc(TipoColeta.COTACAO_E_HISTORICO);
+    }
+
+    /**
+     * Desfavorita: so desativa (ativo=false), nunca apaga a linha - o mesmo
+     * padrao de "soft delete" que desativarReferenciasObsoletas ja usa. So
+     * mexe em favorito de verdade (COTACAO_E_HISTORICO); referencia de setor
+     * nao se desfavorita por aqui.
+     */
+    public void desfavoritar(String codigoAtivo) {
+        String simbolo = canonizar(codigoAtivo);
+        repositorio.findBySimbolo(simbolo)
+                .filter(entidade -> entidade.getTipoColeta() == TipoColeta.COTACAO_E_HISTORICO)
+                .ifPresent(entidade -> {
+                    entidade.setAtivo(Boolean.FALSE);
+                    repositorio.save(entidade);
+                    log.info("{} - Favorito desativado: {}", SERVICO, simbolo);
+                });
     }
 
     public List<AtivoMonitoradoEntity> listarAtivosParaMonitorar() {

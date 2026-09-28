@@ -18,4 +18,7 @@ public interface RepositorioAtivoMonitorado extends JpaRepository<AtivoMonitorad
     List<AtivoMonitoradoEntity> findAllByOrderBySimboloAsc();
 
     List<AtivoMonitoradoEntity> findByTipoColeta(TipoColeta tipoColeta);
+
+    /** Favoritos ativos, em ordem alfabetica - a lista que a tela de Favoritos mostra. */
+    List<AtivoMonitoradoEntity> findByTipoColetaAndAtivoTrueOrderBySimboloAsc(TipoColeta tipoColeta);
 }
