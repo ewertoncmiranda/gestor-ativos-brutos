@@ -6,11 +6,9 @@ import br.com.miranda.gestor.ativos.brutos.external.http.ClienteBrApi;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -21,11 +19,10 @@ class SeletorDeColetaBrapiTest {
     // Segunda-feira, 28/09/2026
     private static final ZonedDateTime SEGUNDA_11H = ZonedDateTime.of(2026, 9, 28, 11, 0, 0, 0, BRASIL);
 
-    private static AtivoMonitoradoEntity ativo(String simbolo, TipoColeta tipo, int intervalo) {
+    private static AtivoMonitoradoEntity ativo(String simbolo, TipoColeta tipo) {
         AtivoMonitoradoEntity a = new AtivoMonitoradoEntity();
         a.setSimbolo(simbolo);
         a.setTipoColeta(tipo);
-        a.setIntervaloSegundos(intervalo);
         return a;
     }
 
@@ -33,13 +30,13 @@ class SeletorDeColetaBrapiTest {
         ClienteBrApi cliente = mock(ClienteBrApi.class);
         when(cliente.habilitado()).thenReturn(comChave);
         return new SeletorDeColetaBrapi(cliente, Clock.fixed(agora.toInstant(), BRASIL),
-                SeletorDeColetaBrapi.politicasPadrao(JanelaDePregao.B3));
+                SeletorDeColetaBrapi.politicasPadrao());
     }
 
     private final List<AtivoMonitoradoEntity> universo = List.of(
-            ativo("RAIZ4", TipoColeta.COTACAO_E_HISTORICO, 30),
-            ativo("PETR4", TipoColeta.REFERENCIA_DIARIA, 3600),
-            ativo("VALE3", TipoColeta.COTACAO, 3600));
+            ativo("RAIZ4", TipoColeta.COTACAO_E_HISTORICO),
+            ativo("PETR4", TipoColeta.REFERENCIA_DIARIA),
+            ativo("VALE3", TipoColeta.COTACAO));
 
     @Test
     void so_favoritos_usam_a_brapi_e_referencias_nunca() {
@@ -49,28 +46,16 @@ class SeletorDeColetaBrapiTest {
 
     @Test
     void sem_chave_da_brapi_ninguem_e_consultado() {
-        SeletorDeColetaBrapi semChave = seletor(false, SEGUNDA_11H);
-        assertTrue(semChave.elegiveis(universo).isEmpty());
-        assertTrue(semChave.devidos(universo, Map.of()).isEmpty());
+        assertTrue(seletor(false, SEGUNDA_11H).elegiveis(universo).isEmpty());
     }
 
     @Test
-    void favorito_respeita_o_minimo_de_15_min_mesmo_cadastrado_com_30_s() {
-        SeletorDeColetaBrapi s = seletor(true, SEGUNDA_11H);
-        LocalDateTime agoraLocal = SEGUNDA_11H.withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
-        LocalDateTime ha10min = agoraLocal.minusMinutes(10);
-        LocalDateTime ha16min = agoraLocal.minusMinutes(16);
-        assertTrue(s.devidos(universo, Map.of("RAIZ4", ha10min)).isEmpty());
-        assertEquals(1, s.devidos(universo, Map.of("RAIZ4", ha16min)).size());
-    }
-
-    @Test
-    void fora_do_pregao_nada_e_consultado() {
+    void pregao_so_aberto_em_dia_util_no_horario() {
         ZonedDateTime sabado = ZonedDateTime.of(2026, 9, 26, 11, 0, 0, 0, BRASIL);
         ZonedDateTime segunda20h = ZonedDateTime.of(2026, 9, 28, 20, 0, 0, 0, BRASIL);
-        assertTrue(seletor(true, sabado).devidos(universo, Map.of()).isEmpty());
-        assertTrue(seletor(true, segunda20h).devidos(universo, Map.of()).isEmpty());
+        assertTrue(seletor(true, SEGUNDA_11H).pregaoAberto());
         assertFalse(seletor(true, sabado).pregaoAberto());
+        assertFalse(seletor(true, segunda20h).pregaoAberto());
     }
 
     @Test

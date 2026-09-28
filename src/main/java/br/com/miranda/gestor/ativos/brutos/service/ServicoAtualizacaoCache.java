@@ -1,5 +1,6 @@
 package br.com.miranda.gestor.ativos.brutos.service;
 
+import br.com.miranda.gestor.ativos.brutos.exceptions.ExcecaoCotaBrapiEsgotada;
 import br.com.miranda.gestor.ativos.brutos.service.coleta.SeletorDeColetaBrapi;
 import br.com.miranda.gestor.ativos.brutos.external.AtivoMonitoradoEntity;
 import br.com.miranda.gestor.ativos.brutos.external.Ativo;
@@ -58,7 +59,6 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERV
 @Service
 public class ServicoAtualizacaoCache {
 
-    private static final long INTERVALO_HISTORICO_SEGUNDOS = 24L * 60 * 60;
     private static final long INTERVALO_PERFIL_SEGUNDOS = 7L * 24 * 60 * 60;
     private static final ZoneId ZONA_BRASIL = ZoneId.of("America/Sao_Paulo");
 
@@ -103,28 +103,18 @@ public class ServicoAtualizacaoCache {
     }
 
     /**
-     * Atualiza a cotacao de todo ativo monitorado cujo intervalo (o mesmo
-     * campo intervaloSegundos usado hoje) ja venceu.
+     * Um ciclo intradiario: cotacao de cada favorito (uma requisicao por ativo
+     * no plano gratuito), com o candle do dia derivado dela. Quem decide SE o
+     * ciclo roda (pregao, orcamento, cadencia) e o ServicoColetaIntradiaria;
+     * aqui so se coleta e grava. Um 429 interrompe o ciclo inteiro.
      */
-    public void atualizarCotacoes() {
-        List<AtivoMonitoradoEntity> ativos = repositorioAtivoMonitorado.findByAtivoTrue();
-        if (ativos.isEmpty()) {
+    public void coletarCotacoes(List<AtivoMonitoradoEntity> favoritos) {
+        if (favoritos.isEmpty()) {
             return;
         }
-
-        Map<String, LocalDateTime> ultimaAtualizacao = repositorioCotacaoAtual.findAll().stream()
-                .collect(Collectors.toMap(CotacaoAtualEntity::getSimbolo, CotacaoAtualEntity::getAtualizadoEm));
-
-        Map<String, AtivoMonitoradoEntity> porSimbolo = ativos.stream()
-                .collect(Collectors.toMap(AtivoMonitoradoEntity::getSimbolo, a -> a));
-
-        List<String> devidos = seletorDeColeta.devidos(ativos, ultimaAtualizacao).stream()
-                .map(AtivoMonitoradoEntity::getSimbolo)
-                .toList();
-
-        if (devidos.isEmpty()) {
-            return;
-        }
+        Map<String, AtivoMonitoradoEntity> porSimbolo = favoritos.stream()
+                .collect(Collectors.toMap(AtivoMonitoradoEntity::getSimbolo, a -> a, (a, b) -> a));
+        List<String> devidos = List.copyOf(porSimbolo.keySet());
 
         log.info("{}-Atualizando cotacao em cache para {} ativo(s): {}", SERVICO, devidos.size(), devidos);
 
@@ -150,10 +140,19 @@ public class ServicoAtualizacaoCache {
                         processarResultadoCotacao(resultado.getSymbol(), resultado.getData(), porSimbolo);
                     }
                 }
+            } catch (ExcecaoCotaBrapiEsgotada e) {
+                throw e;
             } catch (Exception e) {
                 log.error("{}-Erro ao atualizar cotacao do lote {}: {}", SERVICO, lote, e.getMessage(), e);
             }
         }
+    }
+
+    /** Cotacao de um unico simbolo agora (ao favoritar), pelo mesmo caminho do ciclo. */
+    public void coletarCotacao(String simbolo) {
+        Map<String, AtivoMonitoradoEntity> porSimbolo = new HashMap<>();
+        repositorioAtivoMonitorado.findBySimbolo(simbolo).ifPresent(a -> porSimbolo.put(simbolo, a));
+        processarResultadoCotacao(simbolo, clienteBrApi.consultarCotacao(simbolo), porSimbolo);
     }
 
     private void processarResultadoCotacao(String simbolo, RespostaBrapiDTO respostaSingular, Map<String, AtivoMonitoradoEntity> porSimbolo) {
@@ -168,6 +167,7 @@ public class ServicoAtualizacaoCache {
             return;
         }
         persistirCotacao(simbolo, dados);
+        persistirCandleDoDia(simbolo, dados);
         publicarCotacaoNaFila(dados);
         // So mantem viva a coluna "Ultima atualizacao" que a tela de Monitorados ja
         // mostrava - nao influencia mais a decisao de "esta devido", que agora olha o
@@ -179,60 +179,23 @@ public class ServicoAtualizacaoCache {
     }
 
     /**
-     * Atualiza o candle de hoje dos ativos com tipoColeta COTACAO_E_HISTORICO,
-     * uma vez por dia (candles de dias passados sao imutaveis, nunca regravam).
+     * Historico (range 3mo) uma unica vez, quando o ativo vira favorito e ainda
+     * nao tem nenhum candle. Dali em diante o candle do dia sai da propria
+     * cotacao (persistirCandleDoDia) - o laco de historico a cada 5 min foi
+     * removido (plano de atualizacao diaria, B3).
      */
-    public void atualizarHistoricoDiario() {
-        // Candle do dia so enquanto ele muda (pregao aberto) e so dos favoritos.
-        List<AtivoMonitoradoEntity> ativos = seletorDeColeta.pregaoAberto()
-                ? seletorDeColeta.elegiveis(repositorioAtivoMonitorado.findByAtivoTrue())
-                : List.of();
-        if (ativos.isEmpty()) {
+    public void preencherHistoricoInicial(String simbolo) {
+        if (repositorioCandleDiario.existsBySimbolo(simbolo)) {
             return;
         }
-
-        LocalDate hoje = LocalDate.now(ZONA_BRASIL);
-        Map<String, LocalDateTime> ultimaAtualizacaoHoje = new HashMap<>();
-        for (AtivoMonitoradoEntity ativo : ativos) {
-            repositorioCandleDiario.findBySimboloAndData(ativo.getSimbolo(), hoje)
-                    .ifPresent(candle -> ultimaAtualizacaoHoje.put(ativo.getSimbolo(), candle.getAtualizadoEm()));
-        }
-
-        List<String> devidos = ativos.stream()
-                .map(AtivoMonitoradoEntity::getSimbolo)
-                .filter(simbolo -> SelecionadorAtivosDevidos.estaDevido(ultimaAtualizacaoHoje.get(simbolo), INTERVALO_HISTORICO_SEGUNDOS))
-                .toList();
-
-        if (devidos.isEmpty()) {
+        log.info("{}-Preenchimento inicial do historico de {} ({})", SERVICO, simbolo, rangeHistorico);
+        RespostaHistoricoAcoesDTO resposta = clienteBrApi.consultarHistorico(
+                new ConsultaHistoricoAcoesDTO(simbolo, rangeHistorico, "1d", null, null, "asc"));
+        if (resposta == null || resposta.results() == null) {
             return;
         }
-
-        log.info("{}-Atualizando historico diario em cache para {} ativo(s): {}", SERVICO, devidos.size(), devidos);
-
-        for (List<String> lote : particionar(devidos, tamanhoLote)) {
-            try {
-                RespostaHistoricoAcoesDTO resposta = clienteBrApi.consultarHistorico(
-                        new ConsultaHistoricoAcoesDTO(String.join(",", lote), rangeHistorico, "1d", null, null, "asc"));
-                if (resposta == null || resposta.results() == null) {
-                    continue;
-                }
-                for (var resultado : resposta.results()) {
-                    if (resultado.data() == null || resultado.data().historicalDataPrice() == null) {
-                        continue;
-                    }
-                    for (var preco : resultado.data().historicalDataPrice()) {
-                        persistirCandle(resultado.symbol(), preco);
-                    }
-                }
-                // Publica a resposta do lote inteira, igual o fluxo antigo publicava por
-                // simbolo - com tamanhoLote=1 (default hoje) o comportamento e identico ao
-                // de antes. Se o lote crescer (plano pago), o consumidor Python precisa
-                // aceitar mais de um simbolo por mensagem; hoje ele so processa um.
-                publicarHistoricoNaFila(resposta);
-            } catch (Exception e) {
-                log.error("{}-Erro ao atualizar historico do lote {}: {}", SERVICO, lote, e.getMessage(), e);
-            }
-        }
+        persistirCandlesDoResultado(resposta);
+        publicarHistoricoNaFila(resposta);
     }
 
     /**
@@ -274,6 +237,8 @@ public class ServicoAtualizacaoCache {
                     continue;
                 }
                 persistirPerfil(simbolo, dados);
+            } catch (ExcecaoCotaBrapiEsgotada e) {
+                throw e;
             } catch (Exception e) {
                 log.warn("{}-Falha ao atualizar perfil de {}: {}", SERVICO, simbolo, e.getMessage());
             }
@@ -412,6 +377,38 @@ public class ServicoAtualizacaoCache {
         }
 
         repositorioCotacaoAtual.save(entidade);
+    }
+
+    /**
+     * Candle do dia a partir da cotacao (abertura, maxima e minima do dia,
+     * preco e volume): a BRAPI entrega os mesmos numeros no historico, sem
+     * gastar outra requisicao. O dia e o do regularMarketTime em Sao Paulo -
+     * cotacao ainda de ontem as 10:05 so reafirma o candle de ontem.
+     * adjusted_close fica vazio: a conciliacao compara o close bruto.
+     */
+    private void persistirCandleDoDia(String simbolo, AtivoBrapiDTO dados) {
+        if (dados.getRegularMarketPrice() == null) {
+            return;
+        }
+        LocalDate data = diaDoPregao(dados.getRegularMarketTime());
+        CandleDiarioEntity entidade = repositorioCandleDiario.findBySimboloAndData(simbolo, data).orElseGet(CandleDiarioEntity::new);
+        entidade.setSimbolo(simbolo);
+        entidade.setData(data);
+        entidade.setOpen(dados.getRegularMarketOpen());
+        entidade.setHigh(dados.getRegularMarketDayHigh());
+        entidade.setLow(dados.getRegularMarketDayLow());
+        entidade.setClose(dados.getRegularMarketPrice());
+        entidade.setVolume(dados.getRegularMarketVolume());
+        entidade.setAtualizadoEm(LocalDateTime.now());
+        repositorioCandleDiario.save(entidade);
+    }
+
+    static LocalDate diaDoPregao(String regularMarketTime) {
+        try {
+            return Instant.parse(regularMarketTime).atZone(ZONA_BRASIL).toLocalDate();
+        } catch (RuntimeException e) {
+            return LocalDate.now(ZONA_BRASIL);
+        }
     }
 
     private void persistirCandle(String simbolo, RespostaHistoricoAcoesDTO.PrecoHistoricoAcaoDTO preco) {

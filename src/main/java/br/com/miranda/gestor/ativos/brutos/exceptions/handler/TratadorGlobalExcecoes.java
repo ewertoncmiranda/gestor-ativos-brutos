@@ -10,6 +10,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.OffsetDateTime;
 
@@ -48,6 +49,16 @@ public class TratadorGlobalExcecoes {
                 ex.getMessage(),
                 request.getRequestURI()
         );
+    }
+
+    /**
+     * Rota ou recurso estatico inexistente: 404, nao 500 - antes caia no
+     * tratador generico abaixo e virava "Erro interno inesperado".
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<RespostaErroApi> tratarRotaInexistente(NoResourceFoundException ex, HttpServletRequest request) {
+        log.warn("(TRATADOR-EXCECOES)-Rota inexistente: {} {}", request.getMethod(), request.getRequestURI());
+        return montarResposta(HttpStatus.NOT_FOUND, "NOT_FOUND", "Rota inexistente", request.getRequestURI());
     }
 
     /**

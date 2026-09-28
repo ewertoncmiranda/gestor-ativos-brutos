@@ -16,4 +16,6 @@ public interface RepositorioCandleDiario extends JpaRepository<CandleDiarioEntit
     List<CandleDiarioEntity> findBySimboloAndDataBetweenOrderByDataAsc(String simbolo, LocalDate inicio, LocalDate fim);
 
     List<CandleDiarioEntity> findBySimboloOrderByDataAsc(String simbolo);
+
+    boolean existsBySimbolo(String simbolo);
 }

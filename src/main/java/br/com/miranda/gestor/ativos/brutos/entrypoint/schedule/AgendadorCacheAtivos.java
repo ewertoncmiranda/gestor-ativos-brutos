@@ -1,9 +1,10 @@
 package br.com.miranda.gestor.ativos.brutos.entrypoint.schedule;
 
-import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoCache;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoIndicadoresIbge;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoIndicesMacro;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoProventos;
+import br.com.miranda.gestor.ativos.brutos.service.coleta.ServicoColetaIntradiaria;
+import br.com.miranda.gestor.ativos.brutos.service.coleta.ServicoSnapshotFechamento;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -13,15 +14,16 @@ import org.springframework.stereotype.Component;
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.AGENDADOR;
 
 /**
- * Unico ponto que fala com a BRAPI pra manter o cache de mercado atualizado.
- * Substitui o antigo AgendadorAtivos, que chamava processarRobusto/processar
- * a cada tick E era chamado de novo, ao vivo, a cada requisicao HTTP do
- * frontend - o problema que este cache resolve.
+ * Horarios fixos do gestor (plano infra PLANO-ATUALIZACAO-DIARIA, frente B).
+ * Tudo por cron no fuso de Sao Paulo - nada roda na subida do container, e a
+ * maquina desligada nao acumula disparos atrasados.
  *
- * Cada tipo de dado tem seu proprio tick porque cada um envelhece num ritmo
- * diferente: cotacao em segundos, historico diario 1x/dia, perfil da empresa
- * 1x/semana. ServicoAtualizacaoCache decide, dentro de cada chamada, quem
- * realmente esta devido - o tick so define o teto de frequencia.
+ *   08:30 seg-sex        indices macro (BCB), IBGE, proventos e perfis da BRAPI
+ *   :05 e :35, 10h-17h   cotacao dos favoritos (BRAPI; dado da BRAPI muda a cada 30 min)
+ *   17:40 seg-sex        foto de fechamento dos favoritos, sem chamar a BRAPI
+ *
+ * O historico a cada 5 min foi removido: o candle do dia sai da cotacao, e o
+ * historico de 3 meses so e buscado uma vez, ao favoritar.
  */
 @Slf4j
 @Component
@@ -29,73 +31,57 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.AGEN
 @AllArgsConstructor
 public class AgendadorCacheAtivos {
 
-    private final ServicoAtualizacaoCache servicoAtualizacaoCache;
+    static final String ZONA = "America/Sao_Paulo";
+    static final String CRON_MANHA = "0 30 8 * * MON-FRI";
+    static final String CRON_INTRADIARIO = "0 5,35 10-17 * * MON-FRI";
+    static final String CRON_FOTO_FECHAMENTO = "0 40 17 * * MON-FRI";
+
+    private final ServicoColetaIntradiaria coletaIntradiaria;
+    private final ServicoSnapshotFechamento snapshotFechamento;
     private final ServicoAtualizacaoIndicesMacro servicoAtualizacaoIndicesMacro;
     private final ServicoAtualizacaoIndicadoresIbge servicoAtualizacaoIndicadoresIbge;
     private final ServicoAtualizacaoProventos servicoAtualizacaoProventos;
 
-    @Scheduled(fixedDelay = 5000)
+    @Scheduled(cron = CRON_INTRADIARIO, zone = ZONA)
     public void atualizarCotacoes() {
-        try {
-            servicoAtualizacaoCache.atualizarCotacoes();
-        } catch (Exception e) {
-            log.error("{}-Erro no ciclo de atualizacao de cotacoes: {}", AGENDADOR, e.getMessage(), e);
-        }
+        executar("cotacao intradiaria dos favoritos", coletaIntradiaria::executarCiclo);
     }
 
-    @Scheduled(fixedDelay = 300_000)
-    public void atualizarHistoricoDiario() {
-        try {
-            servicoAtualizacaoCache.atualizarHistoricoDiario();
-        } catch (Exception e) {
-            log.error("{}-Erro no ciclo de atualizacao de historico diario: {}", AGENDADOR, e.getMessage(), e);
-        }
+    @Scheduled(cron = CRON_FOTO_FECHAMENTO, zone = ZONA)
+    public void fotografarFechamento() {
+        executar("foto de fechamento dos favoritos", snapshotFechamento::fotografar);
     }
 
-    @Scheduled(fixedDelay = 3_600_000)
+    @Scheduled(cron = CRON_MANHA, zone = ZONA)
     public void atualizarPerfilEmpresa() {
-        try {
-            servicoAtualizacaoCache.atualizarPerfilEmpresa();
-        } catch (Exception e) {
-            log.error("{}-Erro no ciclo de atualizacao de perfil de empresa: {}", AGENDADOR, e.getMessage(), e);
-        }
+        executar("perfil de empresa", coletaIntradiaria::atualizarPerfis);
     }
 
-    @Scheduled(fixedDelay = 86_400_000)
+    @Scheduled(cron = CRON_MANHA, zone = ZONA)
     public void atualizarIndicesMacro() {
-        try {
-            servicoAtualizacaoIndicesMacro.atualizarIndicesMacro();
-        } catch (Exception e) {
-            log.error("{}-Erro no ciclo de atualizacao de indices macro: {}", AGENDADOR, e.getMessage(), e);
-        }
+        executar("indices macro", servicoAtualizacaoIndicesMacro::atualizarIndicesMacro);
     }
 
-    /**
-     * Mesmo tick de 24h dos indices macro do BCB - o IBGE atualiza essas
-     * series mensalmente, entao rodar 1x/dia so repete o mesmo valor ate
-     * sair ponto novo, sem desperdicio real (a API do SIDRA nao documenta
-     * limite de requisicao).
-     */
-    @Scheduled(fixedDelay = 86_400_000)
+    /** O IBGE publica mensalmente; um disparo por dia util so repete o ultimo ponto ate sair outro. */
+    @Scheduled(cron = CRON_MANHA, zone = ZONA)
     public void atualizarIndicadoresIbge() {
-        try {
-            servicoAtualizacaoIndicadoresIbge.atualizarIndicadores();
-        } catch (Exception e) {
-            log.error("{}-Erro no ciclo de atualizacao de indicadores IBGE: {}", AGENDADOR, e.getMessage(), e);
-        }
+        executar("indicadores IBGE", servicoAtualizacaoIndicadoresIbge::atualizarIndicadores);
     }
 
     /**
-     * Diario: proventos sao aprovados esporadicamente, mas so os ultimos 12
-     * meses vem em cada consulta (limite da B3) - rodar todo dia e o que
-     * constroi historico real com o tempo, sem sobrecarregar a fonte.
+     * A B3 so devolve os proventos dos ultimos 12 meses em cada consulta:
+     * consultar todo dia util e o que constroi o historico com o tempo.
      */
-    @Scheduled(fixedDelay = 86_400_000)
+    @Scheduled(cron = CRON_MANHA, zone = ZONA)
     public void atualizarProventos() {
+        executar("proventos", servicoAtualizacaoProventos::atualizarProventos);
+    }
+
+    private static void executar(String rotina, Runnable acao) {
         try {
-            servicoAtualizacaoProventos.atualizarProventos();
+            acao.run();
         } catch (Exception e) {
-            log.error("{}-Erro no ciclo de atualizacao de proventos: {}", AGENDADOR, e.getMessage(), e);
+            log.error("{}-Erro no ciclo de {}: {}", AGENDADOR, rotina, e.getMessage(), e);
         }
     }
 }

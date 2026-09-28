@@ -4,8 +4,8 @@ import br.com.miranda.gestor.ativos.brutos.external.AtivoMonitoradoEntity;
 import br.com.miranda.gestor.ativos.brutos.external.CotacaoAtualEntity;
 import br.com.miranda.gestor.ativos.brutos.external.dto.AtivoMonitoradoDTO;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioCotacaoAtual;
-import br.com.miranda.gestor.ativos.brutos.service.ServicoAtivo;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtivoMonitorado;
+import br.com.miranda.gestor.ativos.brutos.service.coleta.ServicoColetaIntradiaria;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -39,7 +39,7 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.CONT
 public class FavoritosController {
 
     private final ServicoAtivoMonitorado servicoAtivoMonitorado;
-    private final ServicoAtivo servicoAtivo;
+    private final ServicoColetaIntradiaria coletaIntradiaria;
     private final RepositorioCotacaoAtual repositorioCotacaoAtual;
 
     @GetMapping("/favoritos")
@@ -54,19 +54,14 @@ public class FavoritosController {
     }
 
     /**
-     * Favorita e ja dispara a primeira coleta agora, sem esperar o proximo
-     * ciclo do agendador - mesmo comportamento que
-     * {@code AtivoController#registrarAtivo} ja tinha.
+     * Favorita e ja coleta a cotacao agora (e o historico de 3 meses, se o
+     * ativo nao tem candle nenhum), sem esperar o proximo ciclo. Acima de
+     * brapi.favoritos.max responde 409 (ExcecaoLimiteFavoritos).
      */
     @PostMapping("/favoritos/{simbolo}")
     public ResponseEntity<Void> favoritar(@PathVariable String simbolo) {
-        servicoAtivoMonitorado.registrar(simbolo);
-        try {
-            servicoAtivo.processarRobusto(simbolo);
-        } catch (Exception e) {
-            log.warn("{}-Falha na coleta imediata ao favoritar {}; o agendador tentara novamente: {}",
-                    CONTROLADOR, simbolo, e.getMessage());
-        }
+        String canonico = servicoAtivoMonitorado.registrar(simbolo).getSimbolo();
+        coletaIntradiaria.coletarAoFavoritar(canonico);
         log.info("{}-Favorito adicionado: {}", CONTROLADOR, simbolo);
         return ResponseEntity.accepted().build();
     }
