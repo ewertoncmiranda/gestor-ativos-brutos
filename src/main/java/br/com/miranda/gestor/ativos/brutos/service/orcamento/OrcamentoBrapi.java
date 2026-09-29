@@ -2,6 +2,7 @@ package br.com.miranda.gestor.ativos.brutos.service.orcamento;
 
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioExecucaoEtl;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
@@ -27,13 +28,24 @@ public class OrcamentoBrapi {
     private final RegistroConsumoBrapi consumo;
     private final RepositorioExecucaoEtl execucoes;
     private final long orcamentoMensal;
+    private final long orcamentoTela;
     private final AtomicReference<LocalDate> ultimoErroRegistrado = new AtomicReference<>();
 
+    /** Teto padrao das chamadas da tela: cabe nos 13.500 junto do intradiario de 35 favoritos. */
+    static final long ORCAMENTO_TELA_PADRAO = 1500;
+
+    public OrcamentoBrapi(RegistroConsumoBrapi consumo, RepositorioExecucaoEtl execucoes, long orcamentoMensal) {
+        this(consumo, execucoes, orcamentoMensal, ORCAMENTO_TELA_PADRAO);
+    }
+
+    @Autowired
     public OrcamentoBrapi(RegistroConsumoBrapi consumo, RepositorioExecucaoEtl execucoes,
-                          @Value("${brapi.orcamento.mensal:13500}") long orcamentoMensal) {
+                          @Value("${brapi.orcamento.mensal:13500}") long orcamentoMensal,
+                          @Value("${brapi.orcamento.tela.mensal:1500}") long orcamentoTela) {
         this.consumo = consumo;
         this.execucoes = execucoes;
         this.orcamentoMensal = orcamentoMensal;
+        this.orcamentoTela = orcamentoTela;
     }
 
     /** Cadencia permitida para o ciclo de agora, com `favoritos` requisicoes por ciclo. */
@@ -50,6 +62,18 @@ public class OrcamentoBrapi {
     /** Se ainda ha cota para uma chamada avulsa (perfil, preenchimento ao favoritar). */
     public boolean cabeChamadaAvulsa(ZonedDateTime agora) {
         return consumo.consumidoNoMes(YearMonth.from(agora)) < orcamentoMensal;
+    }
+
+    /**
+     * Chamada disparada pela tela (requisicao HTTP): precisa caber no total do
+     * mes E no teto proprio da tela. Sem o teto, navegar pelo painel consumia a
+     * cota que o ciclo intradiario projeta para si (visto em 2026-09-29: 55
+     * requisicoes antes das 10h, quase todas de cliques).
+     */
+    public boolean cabeChamadaDaTela(ZonedDateTime agora) {
+        YearMonth mes = YearMonth.from(agora);
+        return consumo.consumidoNoMes(mes) < orcamentoMensal
+                && consumo.consumidoPelaTelaNoMes(mes) < orcamentoTela;
     }
 
     /** 429 ou cota estourada: registra ERRO em etl_execucao (no maximo uma linha por dia). */

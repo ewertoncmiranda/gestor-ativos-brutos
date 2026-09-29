@@ -24,7 +24,35 @@ public interface RegistroConsumoBrapi {
         }
     }
 
-    void registrar(LocalDate dia, Endpoint endpoint);
+    /**
+     * Quem disparou a chamada. TELA e toda chamada feita dentro de uma
+     * requisicao HTTP (botao robusto, ficha, historico ao vivo, favoritar):
+     * conta com o sufixo "-tela" em brapi_consumo e tem teto proprio, para a
+     * navegacao nao consumir a cota do ciclo intradiario.
+     */
+    enum Origem {
+        AGENDADA(""), TELA("-tela");
 
+        private final String sufixo;
+
+        Origem(String sufixo) {
+            this.sufixo = sufixo;
+        }
+
+        public String chave(Endpoint endpoint) {
+            return endpoint.nome() + sufixo;
+        }
+    }
+
+    default void registrar(LocalDate dia, Endpoint endpoint) {
+        registrar(dia, endpoint, Origem.AGENDADA);
+    }
+
+    void registrar(LocalDate dia, Endpoint endpoint, Origem origem);
+
+    /** Total do mes, de todas as origens: e o que o plano da BRAPI cobra. */
     long consumidoNoMes(YearMonth mes);
+
+    /** So as chamadas de origem TELA no mes. */
+    long consumidoPelaTelaNoMes(YearMonth mes);
 }

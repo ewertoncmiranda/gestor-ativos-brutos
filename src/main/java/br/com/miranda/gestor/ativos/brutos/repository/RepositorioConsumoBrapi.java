@@ -27,11 +27,11 @@ public class RepositorioConsumoBrapi implements RegistroConsumoBrapi {
     private final AtomicBoolean avisouTabelaAusente = new AtomicBoolean(false);
 
     @Override
-    public void registrar(LocalDate dia, Endpoint endpoint) {
+    public void registrar(LocalDate dia, Endpoint endpoint, Origem origem) {
         try {
             jdbc.update("INSERT INTO brapi_consumo (dia, endpoint, quantidade) VALUES (:dia, :endpoint, 1) "
                             + "ON DUPLICATE KEY UPDATE quantidade = quantidade + 1",
-                    Map.of("dia", dia, "endpoint", endpoint.nome()));
+                    Map.of("dia", dia, "endpoint", origem.chave(endpoint)));
         } catch (DataAccessException e) {
             avisarUmaVez(e);
         }
@@ -39,9 +39,18 @@ public class RepositorioConsumoBrapi implements RegistroConsumoBrapi {
 
     @Override
     public long consumidoNoMes(YearMonth mes) {
+        return somar(mes, "");
+    }
+
+    @Override
+    public long consumidoPelaTelaNoMes(YearMonth mes) {
+        return somar(mes, "AND endpoint LIKE '%-tela'");
+    }
+
+    private long somar(YearMonth mes, String filtro) {
         try {
             Long total = jdbc.queryForObject("SELECT COALESCE(SUM(quantidade), 0) FROM brapi_consumo "
-                            + "WHERE dia BETWEEN :inicio AND :fim",
+                            + "WHERE dia BETWEEN :inicio AND :fim " + filtro,
                     Map.of("inicio", mes.atDay(1), "fim", mes.atEndOfMonth()), Long.class);
             return total == null ? 0 : total;
         } catch (DataAccessException e) {
