@@ -56,6 +56,25 @@ public class RepositorioSaudeDados {
         return saida;
     }
 
+    /**
+     * Ultimo pregao do COTAHIST e ultimo pregao que ja tem insight da camada
+     * Base. A idade de MAX(data_analise) nao basta: com o consumidor parado ela
+     * continua "recente" por dias dentro do prazo, e o buraco nao aparece.
+     */
+    public record CoberturaInsightsBase(LocalDate ultimoPregaoB3, LocalDate ultimoPregaoComInsight) {
+    }
+
+    public CoberturaInsightsBase coberturaInsightsBase() {
+        Date pregao = jdbc.getJdbcTemplate().queryForObject("SELECT MAX(data_pregao) FROM cotacao_b3_diaria", Date.class);
+        Date comInsight = jdbc.getJdbcTemplate().queryForObject(
+                "SELECT MAX(CAST(JSON_UNQUOTE(JSON_EXTRACT(detalhes_json, '$.data_pregao_referencia')) AS DATE)) "
+                        + "FROM insight_acao "
+                        + "WHERE JSON_UNQUOTE(JSON_EXTRACT(detalhes_json, '$.fonte_preco')) = 'B3_COTAHIST'",
+                Date.class);
+        return new CoberturaInsightsBase(pregao == null ? null : pregao.toLocalDate(),
+                comInsight == null ? null : comInsight.toLocalDate());
+    }
+
     /** Ultima falha registrada por fonte, para a tela dizer o que quebrou. */
     public Map<String, String> ultimosErros() {
         return jdbc.query(

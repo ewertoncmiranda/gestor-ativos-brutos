@@ -1,11 +1,13 @@
 package br.com.miranda.gestor.ativos.brutos.service;
 
+import br.com.miranda.gestor.ativos.brutos.exceptions.ExcecaoLimiteFavoritos;
 import br.com.miranda.gestor.ativos.brutos.external.AtivoMonitoradoEntity;
 import br.com.miranda.gestor.ativos.brutos.external.TipoColeta;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioAtivoMonitorado;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioIdentidadeAtivo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -32,6 +34,11 @@ public class ServicoAtivoMonitorado {
 
     private final RepositorioAtivoMonitorado repositorio;
     private final RepositorioIdentidadeAtivo repositorioIdentidade;
+
+    // Teto de favoritos que a cota gratuita da BRAPI comporta a cada 30 min:
+    // (13.500 - 390) / (16 ciclos x 23 pregoes) ~ 35 (plano de atualizacao diaria, D3).
+    @Value("${brapi.favoritos.max:35}")
+    private int maxFavoritos = 35;
 
     /**
      * Codigo canonico do ativo (ELET3 -> AXIA3). Todo registro passa por aqui:
@@ -67,6 +74,12 @@ public class ServicoAtivoMonitorado {
                     nova.setAtualizadoEm(LocalDateTime.now());
                     return nova;
                 });
+
+        boolean jaEraFavorito = Boolean.TRUE.equals(entidade.getAtivo())
+                && entidade.getTipoColeta() == TipoColeta.COTACAO_E_HISTORICO;
+        if (!jaEraFavorito && listarFavoritos().size() >= maxFavoritos) {
+            throw new ExcecaoLimiteFavoritos(maxFavoritos);
+        }
 
         if (entidade.getTipoColeta() != TipoColeta.COTACAO_E_HISTORICO) {
             entidade.setTipoColeta(TipoColeta.COTACAO_E_HISTORICO);
@@ -153,11 +166,11 @@ public class ServicoAtivoMonitorado {
     }
 
     /**
-     * Marca a entidade como processada agora - usado pelo agendador apos cada ciclo,
-     * pra que o proximo ciclo so ocorra depois de intervaloSegundos.
+     * Marca a ultima coleta (coluna "Ultima atualizacao" da tela). Um UPDATE
+     * so da data, sem save da entidade: o save incrementava a versao (@Version)
+     * a cada ciclo - foi assim que a RAIZ4, anos a 30 s, chegou a versao 1826.
      */
     public void marcarProcessado(AtivoMonitoradoEntity entidade) {
-        entidade.setAtualizadoEm(LocalDateTime.now());
-        repositorio.save(entidade);
+        repositorio.marcarAtualizado(entidade.getId(), LocalDateTime.now());
     }
 }

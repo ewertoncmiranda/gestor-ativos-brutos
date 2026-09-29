@@ -41,22 +41,22 @@ public class ServicoSaudeDados {
             // sem atualizacao e normal, e sem chave o sistema segue pelo COTAHIST.
             new Definicao("COTACAO", "Cotação intradiária dos favoritos (BRAPI)", 80, false,
                     "Verificar a chave e a cota da BRAPI no gestor-ativos-brutos."),
-            new Definicao("VELAS", "Velas intradiárias dos favoritos (BRAPI)", 100, false,
-                    "Verificar o gestor-ativos-brutos (histórico diário dos favoritos)."),
+            new Definicao("VELAS", "Velas dos favoritos (derivadas da cotação BRAPI)", 100, false,
+                    "Verificar o ciclo intradiário do gestor (:05 e :35, 10h-17h) e o orçamento BRAPI_ORCAMENTO."),
             new Definicao("INSIGHTS_BASE", "Insights diários da camada Base (COTAHIST)", 100, true,
-                    "Rotina 'B3 - Cargas ETL' ou: gerar-insights python -m app.insights_diarios"),
+                    "Rotina 'B3 - Rotina da manha' ou: gerar-insights python -m app.insights_diarios --recuperar"),
             new Definicao("CDI", "CDI (Banco Central)", 120, true,
                     "Reiniciar o gestor: completa o histórico do CDI na subida."),
             new Definicao("CVM_DFP", "Balanços anuais (CVM DFP)", 192, true,
-                    "Rotina 'B3 - Cargas ETL' ou: etl-fundamentos-cvm --ano <ano>"),
+                    "Rotina 'B3 - Rotina da manha' ou: etl-fundamentos-cvm --ano <ano>"),
             new Definicao("CVM_TTM", "Últimos 12 meses (CVM ITR)", 192, false,
-                    "Rotina 'B3 - Cargas ETL' ou: etl-fundamentos-cvm --ttm --ano <ano>"),
+                    "Rotina 'B3 - Rotina da manha' ou: etl-fundamentos-cvm --ttm --ano <ano>"),
             new Definicao("CVM_IPE", "Comunicados (CVM IPE)", 80, false,
-                    "Rotina 'B3 - Cargas ETL' ou: etl-fundamentos-cvm --comunicados"),
+                    "Rotina 'B3 - Rotina da manha' ou: etl-fundamentos-cvm --comunicados"),
             new Definicao("B3_COTAHIST", "Preço oficial (B3 COTAHIST)", 192, false,
-                    "Rotina 'B3 - Cargas ETL' ou: etl-fundamentos-cvm --cotahist --ano <ano>"),
+                    "Rotina 'B3 - Rotina da manha' ou: etl-fundamentos-cvm --cotahist --ano <ano>"),
             new Definicao("DIARIO", "Diário de sinais", 80, true,
-                    "Rotina 'B3 - Diario de sinais' no Agendador do Windows."),
+                    "Rotina 'B3 - Rotina da manha' ou: gerar-insights python -m app.validacao.diario registrar --recuperar"),
             new Definicao("BACKUP_MYSQL", "Backup do banco", 30, true,
                     "Rotina 'B3 - Backup MySQL' no Agendador do Windows."),
             new Definicao("BACKTEST", "Backtest walk-forward", 24 * 35, false,
@@ -70,8 +70,10 @@ public class ServicoSaudeDados {
         Map<String, LocalDateTime> ultimas = repositorio.ultimasAtualizacoes();
         Map<String, String> erros = repositorio.ultimosErros();
 
+        RepositorioSaudeDados.CoberturaInsightsBase insightsBase = repositorio.coberturaInsightsBase();
         List<Fonte> fontes = FONTES.stream()
                 .map(d -> fonte(d, ultimas.get(d.codigo()), erros.get(d.codigo()), agora))
+                .map(f -> "INSIGHTS_BASE".equals(f.codigo()) ? comAtrasoDePregao(f, insightsBase) : f)
                 .toList();
 
         List<CoberturaAtivo> cobertura = repositorio.cobertura();
@@ -109,6 +111,24 @@ public class ServicoSaudeDados {
         }
         return new Fonte(d.codigo(), d.nome(), ultima, idade, d.prazoHoras(), estado,
                 erro == null ? null : resumir(erro), d.comoResolver());
+    }
+
+    /**
+     * Insight da camada Base atrasado de verdade: existe pregao no COTAHIST
+     * sem insight correspondente (data_pregao_referencia), mesmo que o ultimo
+     * insight ainda esteja dentro do prazo em horas.
+     */
+    static Fonte comAtrasoDePregao(Fonte f, RepositorioSaudeDados.CoberturaInsightsBase c) {
+        if (c == null || c.ultimoPregaoB3() == null) {
+            return f;
+        }
+        if (c.ultimoPregaoComInsight() != null && !c.ultimoPregaoComInsight().isBefore(c.ultimoPregaoB3())) {
+            return f;
+        }
+        String motivo = "Pregão de " + c.ultimoPregaoB3() + " sem insight"
+                + (c.ultimoPregaoComInsight() == null ? "" : " (último com insight: " + c.ultimoPregaoComInsight() + ")");
+        return new Fonte(f.codigo(), f.nome(), f.atualizadoEm(), f.idadeHoras(), f.prazoHoras(),
+                "ATRASADA", motivo, f.comoResolver());
     }
 
     static Ativo ativo(CoberturaAtivo c, LocalDateTime agora) {
