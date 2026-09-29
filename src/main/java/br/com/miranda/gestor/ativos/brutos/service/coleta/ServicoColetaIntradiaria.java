@@ -2,7 +2,9 @@ package br.com.miranda.gestor.ativos.brutos.service.coleta;
 
 import br.com.miranda.gestor.ativos.brutos.exceptions.ExcecaoCotaBrapiEsgotada;
 import br.com.miranda.gestor.ativos.brutos.external.AtivoMonitoradoEntity;
+import br.com.miranda.gestor.ativos.brutos.external.CotacaoAtualEntity;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioAtivoMonitorado;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioCotacaoAtual;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoCache;
 import br.com.miranda.gestor.ativos.brutos.service.orcamento.ModoColeta;
 import br.com.miranda.gestor.ativos.brutos.service.orcamento.OrcamentoBrapi;
@@ -11,6 +13,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -26,24 +30,31 @@ public class ServicoColetaIntradiaria {
 
     private static final ZoneId ZONA_BRASIL = ZoneId.of("America/Sao_Paulo");
 
+    /** A BRAPI (plano Gratuito) so atualiza o dado a cada 30 min. */
+    static final Duration JANELA_ATUALIZACAO_BRAPI = Duration.ofMinutes(30);
+
     private final ServicoAtualizacaoCache cache;
     private final SeletorDeColetaBrapi seletor;
     private final OrcamentoBrapi orcamento;
     private final RepositorioAtivoMonitorado ativos;
+    private final RepositorioCotacaoAtual cotacoes;
     private final Clock relogio;
 
     @Autowired
     public ServicoColetaIntradiaria(ServicoAtualizacaoCache cache, SeletorDeColetaBrapi seletor,
-                                    OrcamentoBrapi orcamento, RepositorioAtivoMonitorado ativos) {
-        this(cache, seletor, orcamento, ativos, Clock.system(ZONA_BRASIL));
+                                    OrcamentoBrapi orcamento, RepositorioAtivoMonitorado ativos,
+                                    RepositorioCotacaoAtual cotacoes) {
+        this(cache, seletor, orcamento, ativos, cotacoes, Clock.system(ZONA_BRASIL));
     }
 
     public ServicoColetaIntradiaria(ServicoAtualizacaoCache cache, SeletorDeColetaBrapi seletor,
-                                    OrcamentoBrapi orcamento, RepositorioAtivoMonitorado ativos, Clock relogio) {
+                                    OrcamentoBrapi orcamento, RepositorioAtivoMonitorado ativos,
+                                    RepositorioCotacaoAtual cotacoes, Clock relogio) {
         this.cache = cache;
         this.seletor = seletor;
         this.orcamento = orcamento;
         this.ativos = ativos;
+        this.cotacoes = cotacoes;
         this.relogio = relogio;
     }
 
@@ -76,9 +87,16 @@ public class ServicoColetaIntradiaria {
     }
 
     /**
-     * Ao favoritar: cotacao agora e, se o ativo nao tem candle nenhum, o
-     * historico de 3 meses uma unica vez. Sem chave ou sem cota, fica para o
-     * proximo ciclo - favoritar nunca falha por causa da BRAPI.
+     * Ao favoritar: se o ativo nao tem candle nenhum, o historico de 3 meses
+     * uma unica vez; depois a cotacao agora. Sem chave ou sem cota, fica para
+     * o proximo ciclo - favoritar nunca falha por causa da BRAPI.
+     *
+     * A ordem importa: a cotacao grava o candle do dia, e com ele o
+     * "nao tem candle nenhum" do historico ja seria falso - o favorito novo
+     * ficava so com o candle de hoje (visto em 2026-09-29 com ABCB4, ITUB3...).
+     *
+     * Refavoritar (ou tirar e pôr de volta) um ativo com cotacao buscada ha
+     * menos de 30 min nao chama a BRAPI: ela devolveria o mesmo dado.
      */
     public void coletarAoFavoritar(String simbolo) {
         ZonedDateTime agora = ZonedDateTime.now(relogio).withZoneSameInstant(ZONA_BRASIL);
@@ -86,9 +104,24 @@ public class ServicoColetaIntradiaria {
             return;
         }
         executarProtegido(agora, () -> {
-            cache.coletarCotacao(simbolo);
             cache.preencherHistoricoInicial(simbolo);
+            if (cotacaoRecente(simbolo)) {
+                log.info("(COLETA-INTRADIARIA)-Cotacao de {} tem menos de {} min; sem nova chamada",
+                        simbolo, JANELA_ATUALIZACAO_BRAPI.toMinutes());
+                return;
+            }
+            cache.coletarCotacao(simbolo);
         });
+    }
+
+    private boolean cotacaoRecente(String simbolo) {
+        // atualizado_em e gravado com LocalDateTime.now() do container (UTC):
+        // compara no mesmo fuso, nao no de Brasilia do relogio.
+        LocalDateTime agoraNoFusoGravado = LocalDateTime.ofInstant(relogio.instant(), ZoneId.systemDefault());
+        return cotacoes.findBySimbolo(simbolo)
+                .map(CotacaoAtualEntity::getAtualizadoEm)
+                .filter(em -> Duration.between(em, agoraNoFusoGravado).compareTo(JANELA_ATUALIZACAO_BRAPI) < 0)
+                .isPresent();
     }
 
     private void executarProtegido(ZonedDateTime agora, Runnable coleta) {
