@@ -14,6 +14,8 @@ import java.util.List;
  * @param ativos     o que falta em cada ativo do universo
  * @param precos     checagem cruzada BRAPI x COTAHIST
  * @param aliases    codigos antigos que ainda estao no universo (deveria ser vazio)
+ * @param coberturaProventosContabeis quantas empresas ja tem provento contabil
+ *        (DVA, Plano LAC LAC-GES-4, infra V16) carregado - 0 sem a migracao
  */
 public record SaudeDadosDTO(
         LocalDateTime geradoEm,
@@ -22,7 +24,8 @@ public record SaudeDadosDTO(
         Cobertura cobertura,
         List<Ativo> ativos,
         ChecagemPrecos precos,
-        List<String> aliases) {
+        List<String> aliases,
+        long coberturaProventosContabeis) {
 
     /** estado: OK, ATRASADA, SEM_DADO, ERRO. */
     public record Fonte(String codigo, String nome, LocalDateTime atualizadoEm, Long idadeHoras,
