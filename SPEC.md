@@ -308,3 +308,17 @@ awslocal sqs receive-message --queue-url http://localhost:4566/000000000000/trat
 ```
 
 Observação: no perfil `dev` a porta padrão é 9090, a mesma do Prometheus no compose do ecossistema. Rode localmente com o perfil `test` (9191) ou com `SERVER_PORT` explícito.
+
+## Plano LAC: 9 lacunas de assertividade (proposta de 30-09-2026, EM AVALIAÇÃO)
+
+Plano completo e a migração única **V16** em `infra-b3-ecossytem/SPEC.md`, seção Plano LAC. O gestor **só lê**: ETL e gerar-insights gravam. Nenhuma chamada nova à BRAPI.
+
+| ID | Tarefa | Tabelas lidas |
+|---|---|---|
+| LAC-GES-1 | `GET /validacao/backtest?metodo=RANKING`: por versão de regra e janela, correlação de ranking média com intervalo, retorno por quintil e diferença entre o quintil 5 e o 1; `hipotese` e `numero_tentativa` da execução | `backtest_execucao`, `backtest_ranking_mes`, `backtest_ranking_quintil` |
+| LAC-GES-2 | `GET /ativos/{simbolo}/fatores`: último valor de cada fator ativo, com percentil no universo e no setor | `fator_valor`, `fator_definicao` |
+| LAC-GES-3 | `GET /ativos/{simbolo}/proventos-contabeis`: proventos por período (DVA), ao lado dos eventos de `/proventos/{simbolo}` | `provento_contabil` |
+| LAC-GES-4 | `GET /validacao/saude-dados` ganha fontes: `EVENTOS_CORPORATIVOS`, `FATORES` (idade do último cálculo mensal) e cobertura de proventos da DVA | `etl_execucao`, `fator_valor`, `provento_contabil` |
+
+- Acesso por JDBC (como `brapi_consumo` e `snapshot_fechamento_brapi`), sem entidade JPA: com `ddl-auto=validate` o gestor não sobe antes da V16 se houver entidade.
+- Aceite: os 4 endpoints respondem com o banco sem a V16 (lista vazia e aviso no log, nunca 500) e com a V16 (dados reais); testes de contrato em `contracts/`.
