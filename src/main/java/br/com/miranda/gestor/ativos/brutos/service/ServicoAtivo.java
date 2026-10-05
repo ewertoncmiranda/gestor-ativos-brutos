@@ -6,6 +6,7 @@ import br.com.miranda.gestor.ativos.brutos.external.dto.*;
 import br.com.miranda.gestor.ativos.brutos.external.http.ClienteBrApi;
 import br.com.miranda.gestor.ativos.brutos.port.PortaFilaMensagens;
 import br.com.miranda.gestor.ativos.brutos.tools.ConversorJson;
+import br.com.miranda.gestor.ativos.brutos.tools.EventoSerieHistorica;
 import br.com.miranda.gestor.ativos.brutos.tools.GeradorChaveDeduplicacaoAtivo;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
@@ -70,7 +71,7 @@ public class ServicoAtivo {
         return ativo;
     }
 
-    private Ativo consultarAtivoAPI(String codigoAtivo) {
+    public Ativo consultarAtivoAPI(String codigoAtivo) {
         var retorno = clienteBrApi.consultarCotacao(codigoAtivo);
         if (Objects.isNull(retorno) || retorno.getResults().isEmpty()) {
             log.error("{} - Nenhum dado retornado para ativo: {}", SERVICO, codigoAtivo);
@@ -104,7 +105,7 @@ public class ServicoAtivo {
     }
 
     private void publicarSerieHistoricaNaFila(RespostaHistoricoAcoesDTO historico) {
-        String payload = ConversorJson.paraJson(historico);
+        String payload = EventoSerieHistorica.serializar(historico);
         log.info("{} - Payload JSON de serie historica gerado com {} bytes", SERVICO, payload.length());
         filaMensagens.enviarMensagemParaFila(payload, filaSeriesHistoricasUrl);
     }

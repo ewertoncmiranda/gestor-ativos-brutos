@@ -266,7 +266,6 @@ public class ServicoAtualizacaoCache {
             if (dados == null) {
                 return Optional.empty();
             }
-            persistirPerfil(simbolo, dados);
             return Optional.of(dados);
         } catch (Exception e) {
             log.warn("{}-Falha no fallback de perfil para {}: {}", SERVICO, simbolo, e.getMessage());
@@ -451,7 +450,7 @@ public class ServicoAtualizacaoCache {
     }
 
     private void publicarHistoricoNaFila(RespostaHistoricoAcoesDTO resposta) {
-        filaMensagens.enviarMensagemParaFila(ConversorJson.paraJson(resposta), filaSeriesHistoricasUrl);
+        filaMensagens.enviarMensagemParaFila(br.com.miranda.gestor.ativos.brutos.tools.EventoSerieHistorica.serializar(resposta), filaSeriesHistoricasUrl);
     }
 
     private static List<List<String>> particionar(List<String> lista, int tamanho) {
