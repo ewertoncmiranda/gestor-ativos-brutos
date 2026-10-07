@@ -7,5 +7,9 @@ public enum Recomendacao {
     VENDA_VALUATION,
     ALERTA_RISCO,
     MANTER,
-    SEM_DADOS;
+    SEM_DADOS,
+    SINAL_POSITIVO_FORTE,
+    SINAL_POSITIVO,
+    SEM_MARGEM,
+    NEUTRO;
 }

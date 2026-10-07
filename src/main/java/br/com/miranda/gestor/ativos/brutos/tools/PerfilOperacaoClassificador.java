@@ -127,12 +127,14 @@ public final class PerfilOperacaoClassificador {
         if (recomendacao == null) {
             return null;
         }
-        if (recomendacao.startsWith("COMPRA")) {
+        if (recomendacao.startsWith("COMPRA") || recomendacao.startsWith("SINAL_POSITIVO")) {
             return "COMPRA";
         }
         if (recomendacao.startsWith("VENDA")) {
             return "VENDA";
         }
+        // SEM_MARGEM (payload v3) descreve valuation sem margem, mas nao
+        // aposta em queda. NEUTRO e ALERTA_RISCO tambem nao tem direcao.
         return "NEUTRO";
     }
 

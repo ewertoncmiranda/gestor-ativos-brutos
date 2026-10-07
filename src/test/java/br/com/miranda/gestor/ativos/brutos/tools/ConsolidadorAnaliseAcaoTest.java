@@ -42,6 +42,16 @@ class ConsolidadorAnaliseAcaoTest {
     }
 
     @Test
+    void sem_margem_do_payload_v3_nao_vira_sinal_de_venda() {
+        AnaliseConsolidadaDTO resultado = ConsolidadorAnaliseAcao.consolidar(List.of(
+                analise("SEM_MARGEM", 0),
+                analise("SINAL_POSITIVO", 1)
+        ));
+
+        assertEquals(0.0, resultado.getPercentualSinaisVenda());
+    }
+
+    @Test
     void ignora_recomendacao_nula_sem_falhar() {
         AnaliseAcaoEntity semRecomendacao = analise(null, 0);
 

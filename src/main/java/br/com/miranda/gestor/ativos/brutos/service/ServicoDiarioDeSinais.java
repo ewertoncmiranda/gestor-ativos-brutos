@@ -29,7 +29,9 @@ public class ServicoDiarioDeSinais {
             "Registro de sinais para medir o acerto das regras, não recomendação de investimento. "
                     + "Retornos com custo de 0,10% ida e volta, sem proventos nem impostos.";
 
-    private static final Set<String> COMPRA = Set.of("COMPRA_FORTE", "COMPRA_MODERADA", "COMPRA_TECNICA");
+    private static final Set<String> COMPRA = Set.of(
+            "SINAL_POSITIVO_FORTE", "SINAL_POSITIVO",
+            "COMPRA_FORTE", "COMPRA_MODERADA", "COMPRA_TECNICA");
     private static final Set<String> VENDA = Set.of("VENDA_VALUATION", "VENDA_TECNICA");
 
     private final RepositorioDiarioDeSinais repositorio;
