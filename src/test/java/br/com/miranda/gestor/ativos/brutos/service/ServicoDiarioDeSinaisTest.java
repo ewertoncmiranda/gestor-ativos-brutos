@@ -108,6 +108,9 @@ class ServicoDiarioDeSinaisTest {
         assertNull(placar.get(0).taxaAcerto());
         assertNull(placar.get(0).taxaBase());
         assertEquals(new BigDecimal("0.0100"), placar.get(0).retornoMedio());
+        assertEquals(0, ServicoDiarioDeSinais.direcao("SEM_MARGEM"));
+        assertEquals(1, ServicoDiarioDeSinais.direcao("SINAL_POSITIVO"));
+        assertEquals(1, ServicoDiarioDeSinais.direcao("SINAL_POSITIVO_FORTE"));
     }
 
     @Test
