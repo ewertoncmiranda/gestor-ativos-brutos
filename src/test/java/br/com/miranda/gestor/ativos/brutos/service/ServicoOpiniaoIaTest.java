@@ -28,7 +28,7 @@ class ServicoOpiniaoIaTest {
                 json("[{\"evidencia_id\":\"sinal_momentum\",\"leitura\":\"Momentum neutro.\"}]"),
                 json("[\"Queda abaixo da MM50\"]"), json("[\"fator BETA_12M\"]"),
                 json("[{\"id\":\"sinal_momentum\",\"rotulo\":\"Momentum\",\"valor\":\"NEUTRO_TECNICO\",\"direcao\":0}]"),
-                modelo, origem, LocalDateTime.of(2026, 10, 7, 18, minuto));
+                modelo, origem, "1.2", LocalDateTime.of(2026, 10, 7, 18, minuto));
     }
 
     @Test
@@ -59,7 +59,7 @@ class ServicoOpiniaoIaTest {
         JsonNode serializado = new ObjectMapper().findAndRegisterModules().valueToTree(dto);
         JsonNode primeiro = serializado.get("horizontes").get(0);
         for (String campo : List.of("dataPregao", "horizontePregoes", "opiniao", "risco", "justificativa",
-                "oQueInvalida", "dadosAusentes", "evidencias", "modelo", "origem")) {
+                "oQueInvalida", "dadosAusentes", "evidencias", "modelo", "origem", "versaoPrompt")) {
             assertTrue(primeiro.has(campo), "campo ausente no JSON: " + campo);
         }
         assertEquals(OpiniaoAtivoDTO.AVISO, serializado.get("aviso").asText());
@@ -74,8 +74,29 @@ class ServicoOpiniaoIaTest {
     }
 
     @Test
-    void semLinhasDevolveAvisoEListaVazia() {
-        var repositorio = mock(RepositorioOpiniaoIa.class);
+    void reservaPorRegraGravadaPeloModeloNaoPassaNaFrenteDoModelo() throws Exception {
+        // O modelo falhou na validacao e gravou a reserva (modelo=qwen, origem=REGRA)
+        // depois de uma linha MODELO valida: vale a MODELO, mesmo mais antiga.
+        var escolhidos = ServicoOpiniaoIa.escolherPorHorizonte(List.of(
+                linha(21, "SINAL_POSITIVO", "qwen2.5:1.5b-instruct", "MODELO", 1),
+                linha(21, "SINAL_NEUTRO", "qwen2.5:1.5b-instruct", "REGRA", 9)));
+        assertEquals("MODELO", escolhidos.get(0).origem());
+        assertEquals("SINAL_POSITIVO", escolhidos.get(0).opiniao());
+    }
+
+    @Test
+    void justificativaComTrechoIdSemEvidenciaId() throws Exception {
+        var l = new Linha(PREGAO, 63, "SINAL_NEUTRO", "RISCO_MEDIO",
+                json("[{\"trecho_id\":\"evidencia/momentum#2016-2026\",\"leitura\":\"Momentum bateu o mercado em 49% das semanas.\"}]"),
+                json("[]"), json("[]"), json("[]"), "qwen2.5:1.5b-instruct", "MODELO", "skills@abc", null);
+        var j = ServicoOpiniaoIa.escolherPorHorizonte(List.of(l)).get(0).justificativa().get(0);
+        assertNull(j.evidenciaId());
+        assertEquals("evidencia/momentum#2016-2026", j.trechoId());
+        assertTrue(j.leitura().startsWith("Momentum"));
+    }
+
+    @Test
+    void semLinhasDevolveAvisoEListaVazia() {        var repositorio = mock(RepositorioOpiniaoIa.class);
         when(repositorio.doUltimoPregao("XXXX3")).thenReturn(List.of());
         OpiniaoAtivoDTO dto = new ServicoOpiniaoIa(repositorio).opiniao("XXXX3");
         assertTrue(dto.horizontes().isEmpty());
@@ -85,7 +106,7 @@ class ServicoOpiniaoIaTest {
 
     @Test
     void jsonAusenteViraListaVazia() {
-        var l = new Linha(PREGAO, 21, "SEM_BASE", "RISCO_ALTO", null, null, null, null, "regra", "REGRA", null);
+        var l = new Linha(PREGAO, 21, "SEM_BASE", "RISCO_ALTO", null, null, null, null, "regra", "REGRA", "1.2", null);
         var h = ServicoOpiniaoIa.escolherPorHorizonte(List.of(l)).get(0);
         assertTrue(h.justificativa().isEmpty());
         assertTrue(h.oQueInvalida().isEmpty());
