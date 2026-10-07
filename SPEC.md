@@ -3,28 +3,40 @@
 | Campo | Valor |
 |---|---|
 | Versão da spec | 1.0.0 |
-| Data | 2026-09-25 |
-| Status | Ativa — baseline do estado atual + backlog planejado |
-| Branch analisada | `feature-teste` (último commit `596a888`) |
-| Alterações não commitadas | 15 arquivos (renomeação de controllers, série histórica, SQS, properties) — ver `ISS-14` |
+| Data | 2026-09-27 |
+| Status | IMPLEMENTADO |
 | Specs relacionadas | `gerar-insights/SPEC.md` (consumidor SQS) · `infra-b3-ecossytem/SPEC.md` (ecossistema, Docker e contratos `INT-`) |
 | Público | Desenvolvedores humanos e agentes de IA (Codex, ChatGPT, Claude ou outros) |
 
 ---
+
+## Corte e estados comuns
+
+Data de corte: **2026-09-27** (America/Sao_Paulo). `PLANEJADO`: ainda não executado; `EM ANDAMENTO`: entrega parcial; `IMPLEMENTADO`: código ou decisão presente, sem confirmação integral nesta revisão; `VERIFICADO`: aceite demonstrado por verificação registrada; `BLOQUEADO`: dependência impeditiva identificada. Datas anteriores permanecem como histórico. Resolver um problema significa implementar sua correção; funcionalidades descontinuadas mantêm o ID e registram a resolução. Evidências antigas não são nova validação operacional.
 
 ## 1. Como usar este arquivo (protocolo para agentes)
 
 Fluxo SDD: `Spec → Plano → Tarefas → Implementação → Verificação → Atualizar Spec`.
 
 1. Leia as seções 2 a 7 antes de alterar código. Toda mudança referencia um ID (`REQ-`, `NFR-`, `ISS-`, `TASK-`).
-2. IDs são estáveis: nunca renumere nem apague; para descontinuar, use o status `DESCARTADO` com justificativa.
-3. Status: `ABERTO`, `EM_ANDAMENTO`, `BLOQUEADO`, `CONCLUIDO`, `DESCARTADO` (tarefas/problemas) e `IMPLEMENTADO`, `PARCIAL`, `PLANEJADO` (requisitos).
+2. IDs são estáveis: nunca renumere nem apague; para descontinuar, use o status `IMPLEMENTADO (descontinuado)` com justificativa.
+3. Status: `PLANEJADO`, `EM ANDAMENTO`, `BLOQUEADO`, `IMPLEMENTADO`, `IMPLEMENTADO (descontinuado)` (tarefas/problemas) e `IMPLEMENTADO`, `EM ANDAMENTO`, `PLANEJADO` (requisitos).
 4. **Mudanças em payloads SQS ou no uso da tabela `insight_acao` são mudanças de contrato.** Elas exigem atualizar a seção de contratos da spec do ecossistema (`infra-b3-ecossytem/SPEC.md`, IDs `CTR-`) e avisar o consumidor `gerar-insights`.
 5. Decisões viram `DEC-`. Não resolva decisões abertas sem registrar a escolha.
 6. Critérios de aceite em **Dado / Quando / Então**, convertidos em testes sempre que possível.
 7. Nunca grave segredos (chaves BRAPI/Gemini) em arquivos versionados, nem mesmo como valor padrão.
 
 ---
+
+## 1A. Coordenação entre agentes (estado em 2026-10-04)
+
+**Hub:** `infra-b3-ecossytem/SPEC.md` seção 1A — fila única, contratos, handoff e diário. Leia antes de codar; atualize lá ao pegar e ao fechar tarefa. Em conflito com seções antigas abaixo, vale o hub e esta seção.
+
+- **Dono neste repo:** API HTTP, coleta BRAPI (orçamento, ciclo intradiário :05/:35 das 10h às 17h, snapshot 17:40), scheduler, leitura de `insight_acao`/`indicador_fundamentalista`/`provento_contabil`/`fator_valor`. **Não cria tabelas** (Flyway; `ddl-auto=validate`); tabelas novas são lidas por JDBC e devolvem vazio sem a migration (nunca 500).
+- **Endpoints atuais além da tabela da seção 2:** `/ativos/{s}/fatores` (LAC-GES-2), `/ativos/{s}/proventos-contabeis` (LAC-GES-3), `/validacao/saude-dados` com 13 fontes e `coberturaProventosContabeis` (LAC-GES-4), `/validacao/backtest?metodo=RANKING` (LAC-GES-1), favoritos/camada Base, `/setores`, `/pregoes`. GETs não gravam nem publicam.
+- **Obsoleto nesta spec:** blocos Gemini/S3 e `ddl-auto=update` (hoje `validate`), fluxos de scheduler de 5 s — o ciclo atual é por camada (V13).
+- **Fila local:** LAC-GES-1..4 `IMPLEMENTADO` (f548f97). Sem tarefa aberta própria; quando o painel (LAC-FE-*) pedir campo novo, abrir tarefa no hub.
+- **Arquivos não commitados de outra sessão (contratos/inbox):** `entrypoint/controller/*`, `ServicoAtivo`, `ServicoAtualizacaoCache`, `ConsolidadorAnaliseAcao`, `application.properties`, `contracts/` — não editar nem commitar sem o dono.
 
 ## 2. Visão do produto (funcional)
 
@@ -34,9 +46,9 @@ Fluxo SDD: `Spec → Plano → Tarefas → Implementação → Verificação →
 2. **Publica** os dados brutos em filas **SQS** para o worker Python `gerar-insights`, que faz o valuation.
 3. **Lê** os insights que o `gerar-insights` gravou em MySQL (`insight_acao`), consolida os sinais e deriva a decisão (sentimento, risco, recomendação) por **regras deterministicas**, sem IA nem storage externo.
 
-> **ATUALIZAÇÃO (2026-09-25):** Gemini e S3 foram removidos deste serviço (DynamoDB, nunca usado, foi removido do `gerar-insights`). A decisão consolidada agora é calculada em `MontadorDecisaoDeterministica` a partir dos mesmos dados de `AnaliseConsolidadaDTO`, sem chamada externa nem persistência de arquivo. Itens marcados OBSOLETO abaixo (`ISS-13`, `ISS-16`, `F1`, `F3`, `TASK-22`, `TASK-23`, `CTR-04`, `REQ-05`) eram específicos do fluxo removido. **`ISS-02` continua ABERTO e agora é mais relevante**: o bug de contagem alimenta diretamente `MontadorDecisaoDeterministica`, não só o prompt do Gemini.
+> **ATUALIZAÇÃO (2026-09-25):** Gemini e S3 foram removidos deste serviço (DynamoDB, nunca usado, foi removido do `gerar-insights`). A decisão consolidada agora é calculada em `MontadorDecisaoDeterministica` a partir dos mesmos dados de `AnaliseConsolidadaDTO`, sem chamada externa nem persistência de arquivo. Itens marcados OBSOLETO abaixo (`ISS-13`, `ISS-16`, `F1`, `F3`, `TASK-22`, `TASK-23`, `CTR-04`, `REQ-05`) eram específicos do fluxo removido. **`ISS-02` continua PLANEJADO e agora é mais relevante**: o bug de contagem alimenta diretamente `MontadorDecisaoDeterministica`, não só o prompt do Gemini.
 >
-> **ATUALIZAÇÃO (2026-09-25, 2ª):** `POST /ativos/registrar/{ativo}` deixou de enfileirar em memória (`ISS-08` **RESOLVIDO**). Agora persiste o ativo na tabela `ativo_monitorado` (já existia no schema, nunca usada até aqui) via `ServicoAtivoMonitorado`, dispara a primeira coleta robusta na hora, e o `AgendadorAtivos` reprocessa cada ativo ativo automaticamente a cada `intervalo_segundos` (30s por padrão) — sobrevive a restart. Novo `GET /ativos/registrados` lista o que está cadastrado, consumido pela nova aba "Monitorados" do front (`painel-ativos-frontend`, `TASK-01`/`ISS-01` do front **RESOLVIDO**).
+> **ATUALIZAÇÃO (2026-09-25, 2ª):** `POST /ativos/registrar/{ativo}` deixou de enfileirar em memória (`ISS-08` **IMPLEMENTADO**). Agora persiste o ativo na tabela `ativo_monitorado` (já existia no schema, nunca usada até aqui) via `ServicoAtivoMonitorado`, dispara a primeira coleta robusta na hora, e o `AgendadorAtivos` reprocessa cada ativo ativo automaticamente a cada `intervalo_segundos` (30s por padrão) — sobrevive a restart. Novo `GET /ativos/registrados` lista o que está cadastrado, consumido pela nova aba "Monitorados" do front (`painel-ativos-frontend`, `TASK-01`/`ISS-01` do front **IMPLEMENTADO**).
 
 ### 2.1 Endpoints HTTP
 
@@ -129,7 +141,7 @@ Java 21 (compilado com Maven em imagem Temurin 24), Spring Boot 3.3.0, Spring We
 
 ### 3.5 Tabela `ativo_monitorado` (carteira de monitoramento, 2026-09-25)
 
-Definida em `infra-b3-ecossytem/mysql-init/1 - schema.sql`, mapeada por `AtivoMonitoradoEntity`. Fonte de verdade da carteira recorrente (Fluxo E, seção 2.2) — substituiu a fila em memória do `AgendadorAtivos`.
+Definida em `infra-b3-ecossytem/mysql-migrations/V1__baseline.sql`, mapeada por `AtivoMonitoradoEntity`. Fonte de verdade da carteira recorrente (Fluxo E, seção 2.2) — substituiu a fila em memória do `AgendadorAtivos`.
 
 | Coluna | Tipo | Observação |
 |---|---|---|
@@ -168,7 +180,7 @@ A definição canônica dos contratos entre serviços fica em `infra-b3-ecossyte
 OBSOLETO — descrevia o prompt enviado ao Gemini (removido). O prompt pedia "risco 0-100", mas o schema definia `risco` como string (inconsistência, `ISS-13`, também obsoleto). A decisão hoje é montada em código por `MontadorDecisaoDeterministica`, sem prompt/schema.
 
 ### 5.3 Agendador
-**RESOLVIDO (2026-09-25, ver `ISS-08`):** Cada `POST /ativos/registrar/{ativo}` persiste em `ativo_monitorado` e entra em monitoramento recorrente real (30s por padrão, configurável por linha via `intervalo_segundos`, mínimo 30 pelo `CHECK` do schema). Sobrevive a restart do serviço. Deduplicação por símbolo via `UNIQUE KEY uq_ativo_monitorado_simbolo` (upsert). Não há UI nem endpoint para desativar/pausar um ativo (`ativo=false`) — a coluna existe no schema mas nada a escreve ainda; fora de escopo do pedido original.
+**IMPLEMENTADO (2026-09-25, ver `ISS-08`):** Cada `POST /ativos/registrar/{ativo}` persiste em `ativo_monitorado` e entra em monitoramento recorrente real (30s por padrão, configurável por linha via `intervalo_segundos`, mínimo 30 pelo `CHECK` do schema). Sobrevive a restart do serviço. Deduplicação por símbolo via `UNIQUE KEY uq_ativo_monitorado_simbolo` (upsert). Não há UI nem endpoint para desativar/pausar um ativo (`ativo=false`) — a coluna existe no schema mas nada a escreve ainda; fora de escopo do pedido original.
 
 ---
 
@@ -180,17 +192,17 @@ OBSOLETO — descrevia o prompt enviado ao Gemini (removido). O prompt pedia "ri
 |---|---|---|
 | REQ-01 | Consultar a cotação de um ativo na BRAPI e devolvê-la via HTTP | IMPLEMENTADO |
 | REQ-02 | Publicar a cotação bruta em `tratar-ativos` (CTR-01) | IMPLEMENTADO |
-| REQ-03 | Publicar a série histórica em `sqs-registrar-series-historicas` (CTR-02) | IMPLEMENTADO (só via `/ativos/robusto`, não commitado) |
-| REQ-04 | Gerar análise consolidada a partir dos insights (hoje por regras deterministicas, não IA) | IMPLEMENTADO (com defeito `ISS-02` ainda aberto) |
-| REQ-05 | Salvar, listar e baixar análises no S3 | REMOVIDO (2026-09-25) |
+| REQ-03 | Publicar série histórica em `sqs-registrar-series-historicas` (CTR-02) | IMPLEMENTADO — cadastro POST e coleta agendada; GET não publica |
+| REQ-04 | Gerar análise consolidada a partir dos insights por regras determinísticas | IMPLEMENTADO — enum canônico e compatibilidade com VENDA legada |
+| REQ-05 | Salvar, listar e baixar análises no S3 | IMPLEMENTADO (descontinuado) (2026-09-25) |
 | REQ-06 | Agendar coleta **recorrente** de uma carteira de ativos | IMPLEMENTADO (`TASK-20`, 2026-09-25 — cadastro persistido + reprocessamento a cada 30s; não há ainda restrição ao horário de pregão) |
-| REQ-07 | Gerar a análise de IA somente depois que o insight do dia estiver disponível | PLANEJADO (`TASK-21`) |
+| REQ-07 | Ler apenas insights já persistidos, sem encadear publicação e leitura síncronas | IMPLEMENTADO — decisão determinística na consulta; geração Gemini descontinuada |
 | REQ-08 | Expor o retrato bruto (não mediado) de um único ciclo de análise, para transparência de metodologia | IMPLEMENTADO (2026-09-25, `GET /analises/{simbolo}/fundamentos`) |
 | REQ-09 | Expor fundamentos contábeis da CVM com múltiplos derivados do preço atual | IMPLEMENTADO (2026-09-26, `GET /analises/{simbolo}/fundamentos-cvm`); lê `indicador_fundamentalista` (`infra#CTR-06`), escrita pelo ETL `etl-fundamentos-cvm` |
 | REQ-10 | `GET /ativos/registrados` passa a ser contrato de navegacao, nao so de listagem | IMPLEMENTADO (2026-09-26); o painel usa a carteira para popular o seletor de ativos de todas as abas, entao indisponibilidade dessa rota degrada a navegacao do front (que cai para busca manual) |
-| REQ-13 | Expor o diário de sinais (`GET /validacao/diario?simbolo=&limite=`): totais, placar por versão × recomendação × horizonte com taxa-base da direção apostada (compra: fração de janelas em alta; venda: em queda) e selo de amostra mínima (30), e a linha do tempo dos sinais com o resultado de cada horizonte | IMPLEMENTADO (2026-09-26, `ValidacaoController` + `ServicoDiarioDeSinais`). Lê `sinal_diario`/`sinal_resultado` (`infra#CTR-11`, escritas só pelo gerar-insights) por `NamedParameterJdbcTemplate`, sem entidade JPA, para o `ddl-auto=update` não tocar tabela de outro dono. Janelas com `evento_suspeito` ficam fora do placar. `ServicoDiarioDeSinaisTest` (7 casos) |
+| REQ-13 | Expor o diário de sinais (`GET /validacao/diario?simbolo=&limite=`): totais, placar por versão × recomendação × horizonte com taxa-base da direção apostada (compra: fração de janelas em alta; venda: em queda) e selo de amostra mínima (30), e a linha do tempo dos sinais com o resultado de cada horizonte | IMPLEMENTADO (2026-09-26, `ValidacaoController` + `ServicoDiarioDeSinais`). Lê `sinal_diario`/`sinal_resultado` (`infra#CTR-11`, escritas só pelo gerar-insights) por `NamedParameterJdbcTemplate`, sem entidade JPA, com leitura JDBC; Hibernate configurado para validação. Janelas com `evento_suspeito` ficam fora do placar. `ServicoDiarioDeSinaisTest` (7 casos) |
 | REQ-12 | Manter o histórico diário completo do CDI (SGS 12) desde `indices.macro.historico.inicio` (padrão 2016-01-01), base do excesso sobre o CDI no backtest e no diário de sinais | IMPLEMENTADO (2026-09-26, `CargaHistoricoIndicesMacro` na subida, em thread virtual): busca ano a ano só o que falta antes do ponto mais antigo (folga de 7 dias para o 1º dia útil) e buracos recentes maiores que o ciclo horário; com a série completa não faz chamada. `ServicoAtualizacaoIndicesMacroTest` (6 casos) |
-| REQ-11 | Expor os comunicados oficiais da CVM (base IPE) por ticker e como newsletter da carteira | IMPLEMENTADO (2026-09-26, `ComunicadoController` + `ServicoComunicados`); lê `comunicado_cvm` (`infra#CTR-08`, escrita só pelo ETL) juntando com `cvm_ticker`; contrato HTTP `infra#CTR-10`. Somente leitura: entidade `@Immutable`, sem `unique` declarado para o `ddl-auto=update` não criar chave duplicada |
+| REQ-11 | Expor os comunicados oficiais da CVM (base IPE) por ticker e como newsletter da carteira | IMPLEMENTADO (2026-09-26, `ComunicadoController` + `ServicoComunicados`); lê `comunicado_cvm` (`infra#CTR-08`, escrita só pelo ETL) juntando com `cvm_ticker`; contrato HTTP `infra#CTR-10`. Somente leitura: entidade `@Immutable`, sem `unique` declarado e Hibernate configurado para validação |
 
 Critérios de aceite de referência:
 - **REQ-02** — *Dado* que a BRAPI devolve PETR4, *quando* `GET /ativos/PETR4` é chamado, *então* uma mensagem com `symbol=PETR4` e `regularMarketPrice` numérico chega a `tratar-ativos`.
@@ -202,13 +214,13 @@ Critérios de aceite de referência:
 
 | ID | Requisito | Status |
 |---|---|---|
-| NFR-01 | Nenhum segredo em arquivos versionados ou em imagens | NÃO ATENDIDO (`ISS-01`) |
-| NFR-02 | Endpoints GET sem efeitos colaterais; publicação idempotente | NÃO ATENDIDO (`ISS-09`) |
-| NFR-03 | Resiliência nas integrações (BRAPI, SQS) com backoff e timeouts | PARCIAL (`ISS-10`) |
-| NFR-04 | Schema do banco gerenciado por uma fonte única; a aplicação só valida | NÃO ATENDIDO (`ISS-05`) |
-| NFR-05 | Testes unitários e de integração reais no CI | NÃO ATENDIDO (`ISS-04`) |
-| NFR-06 | Logs estruturados enviados ao ELK sem ruído nem duplicação | PARCIAL (`ISS-12`) |
-| NFR-07 | Imagem mínima (JRE), sem root, com perfil de configuração existente | NÃO ATENDIDO (`ISS-11`) |
+| NFR-01 | Nenhum segredo em arquivos versionados ou em imagens | PLANEJADO (`ISS-01`) |
+| NFR-02 | GET sem gravação nem publicação; eventos com chave estável | IMPLEMENTADO — fallbacks somente consultam BRAPI; inbox transacional no consumidor |
+| NFR-03 | Resiliência nas integrações (BRAPI, SQS) com backoff e timeouts | EM ANDAMENTO (`ISS-10`) |
+| NFR-04 | Schema com proprietário único; aplicação só valida | IMPLEMENTADO — Flyway na infraestrutura; validate em configuração base, dev, test e compose |
+| NFR-05 | Testes unitários e de integração reais no CI | PLANEJADO (`ISS-04`) |
+| NFR-06 | Logs estruturados enviados ao ELK sem ruído nem duplicação | EM ANDAMENTO (`ISS-12`) |
+| NFR-07 | Imagem mínima (JRE), sem root, com perfil de configuração existente | PLANEJADO (`ISS-11`) |
 
 ---
 
@@ -218,24 +230,24 @@ Critérios de aceite de referência:
 
 | ID | Sev. | Problema | Evidência | Impacto | Correção sugerida | Status |
 |---|---|---|---|---|---|---|
-| ISS-01 | **Crítico** | Chave real da BRAPI gravada como valor padrão (a chave do Gemini foi removida junto com a integração em 2026-09-25) | `src/main/resources/application-test.properties` (alteração ainda **não commitada**; o arquivo é versionado). A mesma chave está em `infra-b3-ecossytem/docker-compose-local.yml` (não versionado) | Um commit publica a chave no GitHub | Remover o padrão (`${BRAPI_API_KEY}` sem default), **revogar e gerar nova chave**, usar `.env` fora do git, adicionar secret scanning (gitleaks) no CI | ABERTO |
-| ISS-02 | Alto | A consolidação contava `"VENDA"`, mas o produtor emite a família `"VENDA_*"` | `ConsolidadorAnaliseAcao` agora agrupa recomendações pelo prefixo `VENDA` e ignora valores nulos | Percentual volta a representar os sinais de venda | Teste unitário cobre família e nulos | CONCLUIDO (2026-09-26) |
-| ISS-03 | Alto | Condição de corrida: publica no SQS e **lê `insight_acao` na sequência**, antes de o worker processar a mensagem | `service/ServicoAtivo.java` (`processar`, `processarRobusto`) | A análise da IA ignora o dado recém-coletado; na primeira coleta de um ativo não há análise | Separar os passos: a análise de IA roda em outro gatilho (evento "insight gerado" via SNS/SQS ou agendamento posterior) | ABERTO |
-| ISS-04 | Alto | Não há testes reais (o único teste é `assertTrue(true)`); o build usa `-DskipTests` | `src/test/.../GestorAtivosBrutosApplicationTests.java`, `Dockerfile` | Regressões passam direto | Testes unitários de consolidador/prompt/serviços e de integração com Testcontainers (MySQL + LocalStack) | ABERTO |
-| ISS-05 | Alto | Três fontes de schema para as mesmas tabelas: `mysql-init` (infra), Hibernate `ddl-auto=update` (Java) e entidades SQLAlchemy (Python) | `application-*.properties`, `external/AnaliseAcaoEntity.java` | Drift de schema; o Hibernate pode alterar uma tabela que pertence ao Python | `ddl-auto=validate`; schema único versionado (ver DEC do ecossistema) | ABERTO |
-| ISS-06 | Médio | `ConfigSqs` ignora a configuração: credenciais fixas `"test"/"test"` e região fixa `SA_EAST_1` | `config/ConfigSqs.java` | Não funciona em AWS real | Usar `DefaultCredentialsProvider` (ou as properties) e região configurável | ABERTO |
-| ISS-07 | Médio | `ConversorJson` usa `new ObjectMapper()` sem `JavaTimeModule`; `Ativo.regularMarketTime` é `LocalDateTime` e vem de uma String via ModelMapper | `tools/ConversorJson.java`, `external/Ativo.java` | O campo tende a chegar nulo, ou a serialização falha se for preenchido; o consumidor perde o timestamp da cotação, necessário para idempotência | Injetar o `ObjectMapper` do Spring; converter o epoch da BRAPI para `Instant`; teste de contrato | ABERTO (a verificar com teste) |
-| ISS-08 | Médio | ~~O agendador não é recorrente e a fila fica em memória~~ | `entrypoint/schedule/AgendadorAtivos.java` | ~~Perda de trabalho no restart; README incorreto~~ | Carteira persistida em `ativo_monitorado` + tick de 5s checando `intervalo_segundos` por ativo + deduplicação por `UNIQUE KEY` | RESOLVIDO (2026-09-25) — falta ainda restringir ao horário de pregão, ver `TASK-20` |
-| ISS-09 | Médio | `GET /ativos/{ativo}` publica no SQS (efeito colateral); cada chamada gera histórico e insight novos | `entrypoint/controller/AtivoController.java` | Duplicatas no `gerar-insights`; semântica HTTP errada | `POST` para publicar; `GET` só consulta; chave de deduplicação (`symbol` + `regularMarketTime`) como atributo da mensagem | ABERTO |
-| ISS-10 | Médio | Retentativas do SQS sem backoff; `RestTemplate` sem timeout; a espera de 4 s bloqueia a thread do scheduler | `AdaptadorFilaSqs.java`, `ClienteBrApi.java`, `AgendadorAtivos.java` | Tempestade de retentativas; threads presas | Backoff exponencial (Resilience4j/Spring Retry); timeouts de conexão e leitura; rate limiter | ABERTO |
-| ISS-11 | Médio | Dockerfile: JDK completo em runtime, root, perfil `docker` inexistente, `-DskipTests`, compila com Temurin 24 para alvo Java 21 | `Dockerfile` | Imagem pesada e insegura; sem o compose, a imagem sobe sem configuração | Runtime `eclipse-temurin:21-jre-alpine`, `USER` não-root, `application-docker.properties`, rodar os testes no build/CI | ABERTO |
-| ISS-12 | Médio | Logback envia sempre para `logstash:5000` e também grava em arquivo com padrão texto, que o Logstash lê com codec JSON | `src/main/resources/logback-spring.xml`, `infra-b3-ecossytem/logstash.conf` | Erros de conexão fora do Docker; parse falho e logs duplicados no Elasticsearch | Appender Logstash só no perfil docker (`<springProfile>`); arquivo em JSON **ou** remover o input de arquivo | ABERTO |
-| ISS-13 | Baixo | Prompt pede "risco 0-100", mas o schema espera string; `variacaoMedia` é na verdade a margem média | `tools/MontadorPromptAnalise.java`, `ServicoGemini.java` | Saída da IA inconsistente | Alinhar prompt e schema; renomear para `margemSegurancaMedia` | ABERTO |
-| ISS-14 | Médio | 15 arquivos não commitados (renomeação de controllers, série histórica, remoção de classes) | `git status` | Risco de perda; PR grande demais | Commitar em partes (refactor de nomes ≠ feature) **depois** de resolver `ISS-01` | ABERTO |
-| ISS-15 | Baixo | Dependências não usadas: WebFlux (junto com Web MVC), OpenFeign, `jackson-module-kotlin`; `mapstruct-processor` configurado sem MapStruct; `show-sql=true` | `pom.xml`, properties | Build e imagem maiores; logs verbosos | Limpar o `pom.xml`; `show-sql` só em debug | ABERTO |
-| ISS-16 | OBSOLETO | ~~Chave S3 `{simbolo}/analises/{HH:mm:ss}.json` sem data; `:` em nome de arquivo~~ | — | S3 removido em 2026-09-25, análise não é mais persistida em arquivo | — | RESOLVIDO (remoção) |
-| ISS-17 | Baixo | Consolidação sem janela temporal e com NPE possível se `recomendacao` for nula (`groupingBy` não aceita chave nula) | `tools/ConsolidadorAnaliseAcao.java` | Sinais antigos dominam; erro 500 esporádico | Janela configurável (ex.: 90 dias); filtrar nulos | ABERTO |
-| ISS-18 | Alto | ~~`processarRobusto` (usado por `GET /ativos/robusto` e por todo cadastro em `ativo_monitorado`) pedia `range=1y` no histórico da BRAPI; o plano Free da BRAPI só libera `1d/5d/1mo/3mo` (`400 INVALID_RANGE`) para qualquer ticker fora da lista de demonstração deles (ex.: `PETR4`, `MGLU3` passavam mesmo sem chave; `WEGE3`, `RAIZ4` não)~~ | `service/ServicoAtivo.java` (achado em 2026-09-25 testando a aba Monitorados: `atualizado_em` nunca avançava pra tickers fora da lista demo) | Com chave BRAPI real configurada, o monitoramento recorrente falhava silenciosamente (retry a cada 5s sem nunca suceder) pra praticamente qualquer ativo cadastrado | `range` extraído para `${brapi.historico.range:3mo}` | RESOLVIDO (2026-09-25) |
+| ISS-01 | **Crítico** | Chave real da BRAPI gravada como valor padrão (a chave do Gemini foi removida junto com a integração em 2026-09-25) | `src/main/resources/application-test.properties` (alteração ainda **não commitada**; o arquivo é versionado). A mesma chave está em `infra-b3-ecossytem/docker-compose-local.yml` (não versionado) | Um commit publica a chave no GitHub | Remover o padrão (`${BRAPI_API_KEY}` sem default), **revogar e gerar nova chave**, usar `.env` fora do git, adicionar secret scanning (gitleaks) no CI | PLANEJADO |
+| ISS-02 | Alto | A consolidação contava `"VENDA"`, mas o produtor emite a família `"VENDA_*"` | `ConsolidadorAnaliseAcao` agora agrupa recomendações pelo prefixo `VENDA` e ignora valores nulos | Percentual volta a representar os sinais de venda | Teste unitário cobre família e nulos | IMPLEMENTADO (2026-09-26) |
+| ISS-03 | Alto | Condição de corrida: publica no SQS e **lê `insight_acao` na sequência**, antes de o worker processar a mensagem | `service/ServicoAtivo.java` (`processar`, `processarRobusto`) | A análise da IA ignora o dado recém-coletado; na primeira coleta de um ativo não há análise | Separar os passos: a análise de IA roda em outro gatilho (evento "insight gerado" via SNS/SQS ou agendamento posterior) | PLANEJADO |
+| ISS-04 | Alto | Não há testes reais (o único teste é `assertTrue(true)`); o build usa `-DskipTests` | `src/test/.../GestorAtivosBrutosApplicationTests.java`, `Dockerfile` | Regressões passam direto | Testes unitários de consolidador/prompt/serviços e de integração com Testcontainers (MySQL + LocalStack) | PLANEJADO |
+| ISS-05 | Alto | Propriedade de schema unificada | Flyway da infraestrutura; Hibernate validate; inicialização SQL desativada | Evita alteração de tabelas por ORM | IMPLEMENTADO |
+| ISS-06 | Médio | `ConfigSqs` ignora a configuração: credenciais fixas `"test"/"test"` e região fixa `SA_EAST_1` | `config/ConfigSqs.java` | Não funciona em AWS real | Usar `DefaultCredentialsProvider` (ou as properties) e região configurável | PLANEJADO |
+| ISS-07 | Médio | `ConversorJson` usa `new ObjectMapper()` sem `JavaTimeModule`; `Ativo.regularMarketTime` é `LocalDateTime` e vem de uma String via ModelMapper | `tools/ConversorJson.java`, `external/Ativo.java` | O campo tende a chegar nulo, ou a serialização falha se for preenchido; o consumidor perde o timestamp da cotação, necessário para idempotência | Injetar o `ObjectMapper` do Spring; converter o epoch da BRAPI para `Instant`; teste de contrato | PLANEJADO (a verificar com teste) |
+| ISS-08 | Médio | ~~O agendador não é recorrente e a fila fica em memória~~ | `entrypoint/schedule/AgendadorAtivos.java` | ~~Perda de trabalho no restart; README incorreto~~ | Carteira persistida em `ativo_monitorado` + tick de 5s checando `intervalo_segundos` por ativo + deduplicação por `UNIQUE KEY` | IMPLEMENTADO (2026-09-25) — falta ainda restringir ao horário de pregão, ver `TASK-20` |
+| ISS-09 | Médio | GETs de cotação, histórico e perfil gravavam ou publicavam no fallback | Fallbacks consultam sem persistência; cadastro POST e agendador mantêm escrita | Sem efeitos de negócio ao navegar | IMPLEMENTADO |
+| ISS-10 | Médio | Retentativas do SQS sem backoff; `RestTemplate` sem timeout; a espera de 4 s bloqueia a thread do scheduler | `AdaptadorFilaSqs.java`, `ClienteBrApi.java`, `AgendadorAtivos.java` | Tempestade de retentativas; threads presas | Backoff exponencial (Resilience4j/Spring Retry); timeouts de conexão e leitura; rate limiter | PLANEJADO |
+| ISS-11 | Médio | Dockerfile: JDK completo em runtime, root, perfil `docker` inexistente, `-DskipTests`, compila com Temurin 24 para alvo Java 21 | `Dockerfile` | Imagem pesada e insegura; sem o compose, a imagem sobe sem configuração | Runtime `eclipse-temurin:21-jre-alpine`, `USER` não-root, `application-docker.properties`, rodar os testes no build/CI | PLANEJADO |
+| ISS-12 | Médio | Logback envia sempre para `logstash:5000` e também grava em arquivo com padrão texto, que o Logstash lê com codec JSON | `src/main/resources/logback-spring.xml`, `infra-b3-ecossytem/logstash.conf` | Erros de conexão fora do Docker; parse falho e logs duplicados no Elasticsearch | Appender Logstash só no perfil docker (`<springProfile>`); arquivo em JSON **ou** remover o input de arquivo | PLANEJADO |
+| ISS-13 | Baixo | Prompt pede "risco 0-100", mas o schema espera string; `variacaoMedia` é na verdade a margem média | `tools/MontadorPromptAnalise.java`, `ServicoGemini.java` | Saída da IA inconsistente | Alinhar prompt e schema; renomear para `margemSegurancaMedia` | PLANEJADO |
+| ISS-14 | Médio | 15 arquivos registrado no códigos (renomeação de controllers, série histórica, remoção de classes) | `git status` | Risco de perda; PR grande demais | Commitar em partes (refactor de nomes ≠ feature) **depois** de resolver `ISS-01` | PLANEJADO |
+| ISS-15 | Baixo | Dependências não usadas: WebFlux (junto com Web MVC), OpenFeign, `jackson-module-kotlin`; `mapstruct-processor` configurado sem MapStruct; `show-sql=true` | `pom.xml`, properties | Build e imagem maiores; logs verbosos | Limpar o `pom.xml`; `show-sql` só em debug | PLANEJADO |
+| ISS-16 | OBSOLETO | ~~Chave S3 `{simbolo}/analises/{HH:mm:ss}.json` sem data; `:` em nome de arquivo~~ | — | S3 removido em 2026-09-25, análise não é mais persistida em arquivo | — | IMPLEMENTADO (remoção) |
+| ISS-17 | Baixo | Consolidação sem janela temporal e com NPE possível se `recomendacao` for nula (`groupingBy` não aceita chave nula) | `tools/ConsolidadorAnaliseAcao.java` | Sinais antigos dominam; erro 500 esporádico | Janela configurável (ex.: 90 dias); filtrar nulos | PLANEJADO |
+| ISS-18 | Alto | ~~`processarRobusto` (usado por `GET /ativos/robusto` e por todo cadastro em `ativo_monitorado`) pedia `range=1y` no histórico da BRAPI; o plano Free da BRAPI só libera `1d/5d/1mo/3mo` (`400 INVALID_RANGE`) para qualquer ticker fora da lista de demonstração deles (ex.: `PETR4`, `MGLU3` passavam mesmo sem chave; `WEGE3`, `RAIZ4` não)~~ | `service/ServicoAtivo.java` (achado em 2026-09-25 testando a aba Monitorados: `atualizado_em` nunca avançava pra tickers fora da lista demo) | Com chave BRAPI real configurada, o monitoramento recorrente falhava silenciosamente (retry a cada 5s sem nunca suceder) pra praticamente qualquer ativo cadastrado | `range` extraído para `${brapi.historico.range:3mo}` | IMPLEMENTADO (2026-09-25) |
 
 ### 7.2 Visão de analista financeiro
 - **F1 (OBSOLETO):** era sobre o Gemini receber só médias agregadas e poder alucinar. Sem IA, não se aplica mais — a decisão é 100% determinada pelas mesmas médias, sem inferência.
@@ -250,34 +262,34 @@ Critérios de aceite de referência:
 
 | ID | Tarefa | Resolve | Critério de aceite | Status |
 |---|---|---|---|---|
-| TASK-01 | Remover chave BRAPI embutida, revogar e gerar nova chave, adicionar gitleaks ao CI (chave do Gemini já removida junto com a integração) | ISS-01, NFR-01 | `git grep -nE "BRAPI_API_KEY:[^}]"` sem resultado; pipeline falha se houver segredo | ABERTO |
-| TASK-02 | Commitar as mudanças pendentes em commits separados | ISS-14 | `git status` limpo; PR com descrição | ABERTO |
-| TASK-03 | Corrigir a contagem de venda (usar a família `VENDA_*` de CTR-03) | ISS-02 | Teste do critério REQ-04 passa | CONCLUIDO (2026-09-26) |
-| TASK-04 | Testes reais + remover `-DskipTests`; job de teste no CI antes da publicação da imagem | ISS-04, NFR-05 | Cobertura ≥ 70% em `tools` e `service` | ABERTO |
-| TASK-05 | Dockerfile multi-stage com JRE 21, não-root, `application-docker.properties` | ISS-11, NFR-07 | `docker run` sem o compose sobe e responde em `/actuator/health` (com as dependências apontadas) | ABERTO |
+| TASK-01 | Remover chave BRAPI embutida, revogar e gerar nova chave, adicionar gitleaks ao CI (chave do Gemini já removida junto com a integração) | ISS-01, NFR-01 | `git grep -nE "BRAPI_API_KEY:[^}]"` sem resultado; pipeline falha se houver segredo | PLANEJADO |
+| TASK-02 | Commitar as mudanças pendentes em commits separados | ISS-14 | `git status` limpo; PR com descrição | PLANEJADO |
+| TASK-03 | Corrigir a contagem de venda (usar a família `VENDA_*` de CTR-03) | ISS-02 | Teste do critério REQ-04 passa | IMPLEMENTADO (2026-09-26) |
+| TASK-04 | Testes reais + remover `-DskipTests`; job de teste no CI antes da publicação da imagem | ISS-04, NFR-05 | Cobertura ≥ 70% em `tools` e `service` | PLANEJADO |
+| TASK-05 | Dockerfile multi-stage com JRE 21, não-root, `application-docker.properties` | ISS-11, NFR-07 | `docker run` sem o compose sobe e responde em `/actuator/health` (com as dependências apontadas) | PLANEJADO |
 
 ### Fase 1 — Integração correta
 
 | ID | Tarefa | Resolve | Critério de aceite | Depende de | Status |
 |---|---|---|---|---|---|
-| TASK-10 | `ObjectMapper` do Spring + `regularMarketTime` como `Instant` ISO-8601 no payload | ISS-07 | Teste de contrato: a mensagem publicada contém `regularMarketTime` não nulo | TASK-04 | ABERTO |
-| TASK-11 | `ddl-auto=validate` | ISS-05 | A aplicação falha no startup se o schema divergir | DEC do ecossistema sobre schema | ABERTO |
-| TASK-12 | `GET /ativos/{ativo}` sem efeito colateral; `POST /ativos/{ativo}/coletas` publica; atributo `dedupKey` na mensagem | ISS-09, NFR-02 | Chamar o GET 5× não gera mensagens | — | ABERTO |
-| TASK-13 | Configuração SQS via properties e cadeia de credenciais padrão | ISS-06 | Mesma imagem funciona com LocalStack e com AWS real mudando só o env | — | ABERTO |
-| TASK-14 | Backoff + timeouts (Resilience4j) para BRAPI e SQS | ISS-10, NFR-03 | Testes com falha simulada respeitam o backoff | TASK-04 | ABERTO |
-| TASK-15 | Logback por perfil; logs de arquivo em JSON | ISS-12, NFR-06 | Cada evento aparece uma vez no Kibana | — | ABERTO |
+| TASK-10 | `ObjectMapper` do Spring + `regularMarketTime` como `Instant` ISO-8601 no payload | ISS-07 | Teste de contrato: a mensagem publicada contém `regularMarketTime` não nulo | TASK-04 | PLANEJADO |
+| TASK-11 | `ddl-auto=validate` | ISS-05 | A aplicação falha no startup se o schema divergir | DEC do ecossistema sobre schema | PLANEJADO |
+| TASK-12 | `GET /ativos/{ativo}` sem efeito colateral; `POST /ativos/{ativo}/coletas` publica; atributo `dedupKey` na mensagem | ISS-09, NFR-02 | Chamar o GET 5× não gera mensagens | — | PLANEJADO |
+| TASK-13 | Configuração SQS via properties e cadeia de credenciais padrão | ISS-06 | Mesma imagem funciona com LocalStack e com AWS real mudando só o env | — | PLANEJADO |
+| TASK-14 | Backoff + timeouts (Resilience4j) para BRAPI e SQS | ISS-10, NFR-03 | Testes com falha simulada respeitam o backoff | TASK-04 | PLANEJADO |
+| TASK-15 | Logback por perfil; logs de arquivo em JSON | ISS-12, NFR-06 | Cada evento aparece uma vez no Kibana | — | PLANEJADO |
 
 ### Fase 2 — Produto
 
 | ID | Tarefa | Resolve | Critério de aceite | Depende de | Status |
 |---|---|---|---|---|---|
-| TASK-20 | Carteira persistida + coleta agendada por cron no horário do pregão | ISS-08, REQ-06 | Ativos da carteira coletados 1×/dia útil, sem duplicata | TASK-12 | PARCIAL (2026-09-25) — carteira persistida (`ativo_monitorado`) e reprocessamento recorrente a cada 30s implementados; falta restringir ao horário de pregão (hoje roda 24/7) |
-| TASK-21 | Análise de IA disparada por evento "insight gerado" (SNS `transmitir-lote-dados` ou fila nova), não na sequência da publicação | ISS-03, REQ-07 | A análise usa o insight do dia | contrato novo no ecossistema | ABERTO |
-| TASK-22 | OBSOLETO — prompt/schema do Gemini removidos; disclaimer legal (`F2`) deve ser adicionado direto na resposta HTTP de `MontadorDecisaoDeterministica` | F2 | Resposta HTTP contém `aviso_legal` | TASK-03 | ABERTO (reescopado para F2) |
-| TASK-23 | OBSOLETO — S3 removido, sem chave a corrigir | ISS-16 | — | — | RESOLVIDO (remoção) |
-| TASK-24 | Limpeza do `pom.xml` | ISS-15 | Build verde; imagem menor | TASK-04 | ABERTO |
-| TASK-25 | API de comunicados oficiais da CVM: linha do tempo por ticker e newsletter semanal | REQ-11 | Critério REQ-11 passa; `ServicoComunicadosTest` verde | ETL `--comunicados` (etl#REQ-09) | CONCLUIDO (2026-09-26) |
-| TASK-26 | Tela de comunicados no painel (`#/comunicados`) consumindo `infra#CTR-10` | REQ-11 | Chips por ticker, linha do tempo, link "Abrir documento na CVM ↗" | TASK-25 | CONCLUIDO (2026-09-26, `painel#REQ-08`) |
+| TASK-20 | Carteira persistida + coleta agendada por cron no horário do pregão | ISS-08, REQ-06 | Ativos da carteira coletados 1×/dia útil, sem duplicata | TASK-12 | EM ANDAMENTO (2026-09-25) — carteira persistida (`ativo_monitorado`) e reprocessamento recorrente a cada 30s implementados; falta restringir ao horário de pregão (hoje roda 24/7) |
+| TASK-21 | Análise de IA disparada por evento "insight gerado" (SNS `transmitir-lote-dados` ou fila nova), não na sequência da publicação | ISS-03, REQ-07 | A análise usa o insight do dia | contrato novo no ecossistema | PLANEJADO |
+| TASK-22 | OBSOLETO — prompt/schema do Gemini removidos; disclaimer legal (`F2`) deve ser adicionado direto na resposta HTTP de `MontadorDecisaoDeterministica` | F2 | Resposta HTTP contém `aviso_legal` | TASK-03 | PLANEJADO (reescopado para F2) |
+| TASK-23 | OBSOLETO — S3 removido, sem chave a corrigir | ISS-16 | — | — | IMPLEMENTADO (remoção) |
+| TASK-24 | Limpeza do `pom.xml` | ISS-15 | Build verde; imagem menor | TASK-04 | PLANEJADO |
+| TASK-25 | API de comunicados oficiais da CVM: linha do tempo por ticker e newsletter semanal | REQ-11 | Critério REQ-11 passa; `ServicoComunicadosTest` verde | ETL `--comunicados` (etl#REQ-09) | IMPLEMENTADO (2026-09-26) |
+| TASK-26 | Tela de comunicados no painel (`#/comunicados`) consumindo `infra#CTR-10` | REQ-11 | Chips por ticker, linha do tempo, link "Abrir documento na CVM ↗" | TASK-25 | IMPLEMENTADO (2026-09-26, `painel#REQ-08`) |
 
 ---
 
@@ -285,10 +297,10 @@ Critérios de aceite de referência:
 
 | ID | Pergunta | Opções | Status |
 |---|---|---|---|
-| DEC-01 | Gatilho da análise de IA | síncrona no endpoint / evento pós-insight / agendada | ABERTO |
-| DEC-02 | Lista de ativos acompanhados | tabela no MySQL / configuração / endpoint de carteira | ABERTO |
-| DEC-03 | Manter WebFlux ou só Web MVC | MVC (recomendado; não há código reativo) / WebFlux | ABERTO |
-| DEC-04 | Nome e contrato das recomendações | ver `infra-b3-ecossytem/SPEC.md` (DEC do ecossistema) | ABERTO |
+| DEC-01 | Gatilho da análise de IA | síncrona no endpoint / evento pós-insight / agendada | PLANEJADO |
+| DEC-02 | Lista de ativos acompanhados | tabela no MySQL / configuração / endpoint de carteira | PLANEJADO |
+| DEC-03 | Manter WebFlux ou só Web MVC | MVC (recomendado; não há código reativo) / WebFlux | PLANEJADO |
+| DEC-04 | Nome e contrato das recomendações | Enum gerado do JSON Schema canônico em infra/contracts | IMPLEMENTADO |
 
 ---
 
@@ -308,3 +320,26 @@ awslocal sqs receive-message --queue-url http://localhost:4566/000000000000/trat
 ```
 
 Observação: no perfil `dev` a porta padrão é 9090, a mesma do Prometheus no compose do ecossistema. Rode localmente com o perfil `test` (9191) ou com `SERVER_PORT` explícito.
+
+## Revisão integrada de 2026-09-27
+
+| Entrega | Estado | Evidência e limite |
+|---|---|---|
+| Proprietário único do schema | IMPLEMENTADO | Infra/Flyway: V1 bootstrap, V11 inbox; serviços não executam migrations |
+| Eventos e recomendações | IMPLEMENTADO | schemas canônicos em infra/contracts; enum gerado em Java, Python e JS; versões desconhecidas ficam para DLQ |
+| Leituras HTTP e idempotência | IMPLEMENTADO | GET sem persistência/publicação; inbox e efeitos na mesma transação; ACK posterior ao commit |
+| Verificação desta entrega | EM ANDAMENTO | Resultados registrados em infra/VERIFICACAO-2026-09-27.md; não representa deploy no banco em uso |
+
+## Plano LAC: 9 lacunas de assertividade (proposta de 30-09-2026, EM AVALIAÇÃO)
+
+Plano completo e a migração única **V16** em `infra-b3-ecossytem/SPEC.md`, seção Plano LAC. O gestor **só lê**: ETL e gerar-insights gravam. Nenhuma chamada nova à BRAPI.
+
+| ID | Tarefa | Tabelas lidas |
+|---|---|---|
+| LAC-GES-1 | `GET /validacao/backtest?metodo=RANKING`: por versão de regra e janela, correlação de ranking média com intervalo, retorno por quintil e diferença entre o quintil 5 e o 1; `hipotese` e `numero_tentativa` da execução | `backtest_execucao`, `backtest_ranking_mes`, `backtest_ranking_quintil` |
+| LAC-GES-2 | `GET /ativos/{simbolo}/fatores`: último valor de cada fator ativo, com percentil no universo e no setor | `fator_valor`, `fator_definicao` |
+| LAC-GES-3 | `GET /ativos/{simbolo}/proventos-contabeis`: proventos por período (DVA), ao lado dos eventos de `/proventos/{simbolo}` | `provento_contabil` |
+| LAC-GES-4 | `GET /validacao/saude-dados` ganha fontes: `EVENTOS_CORPORATIVOS`, `FATORES` (idade do último cálculo mensal) e cobertura de proventos da DVA | `etl_execucao`, `fator_valor`, `provento_contabil` |
+
+- Acesso por JDBC (como `brapi_consumo` e `snapshot_fechamento_brapi`), sem entidade JPA: com `ddl-auto=validate` o gestor não sobe antes da V16 se houver entidade.
+- Aceite: os 4 endpoints respondem com o banco sem a V16 (lista vazia e aviso no log, nunca 500) e com a V16 (dados reais); testes de contrato em `contracts/`.

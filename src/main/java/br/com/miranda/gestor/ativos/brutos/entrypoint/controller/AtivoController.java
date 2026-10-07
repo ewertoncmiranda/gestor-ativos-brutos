@@ -73,10 +73,8 @@ public class AtivoController {
         return repositorioCotacaoAtual.findBySimbolo(simbolo)
                 .map(Ativo::de)
                 .orElseGet(() -> {
-                    log.info("{}-Simbolo {} nao esta em cache; buscando ao vivo e aquecendo o cache", CONTROLADOR, simbolo);
-                    Ativo ativoAoVivo = servicoAtivo.processarRobusto(simbolo);
-                    servicoAtualizacaoCache.persistirCotacaoDoFallback(ativoAoVivo);
-                    return ativoAoVivo;
+                    log.info("{}-Simbolo {} nao esta em cache; consultando BRAPI sem persistir", CONTROLADOR, simbolo);
+                    return servicoAtivo.consultarAtivoAPI(simbolo);
                 });
     }
 

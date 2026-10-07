@@ -74,7 +74,6 @@ public class HistoricoAcoesController {
                         new ConsultaHistoricoAcoesDTO(simbolo, rangeEfetivo, interval, startDate, endDate, sortOrder));
                 if (respostaAoVivo != null && respostaAoVivo.results() != null) {
                     resultados.addAll(respostaAoVivo.results());
-                    servicoAtualizacaoCache.persistirCandlesDoResultado(respostaAoVivo);
                 }
                 continue;
             }

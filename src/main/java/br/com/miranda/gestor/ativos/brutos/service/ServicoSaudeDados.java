@@ -4,6 +4,7 @@ import br.com.miranda.gestor.ativos.brutos.external.dto.SaudeDadosDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.SaudeDadosDTO.Ativo;
 import br.com.miranda.gestor.ativos.brutos.external.dto.SaudeDadosDTO.Cobertura;
 import br.com.miranda.gestor.ativos.brutos.external.dto.SaudeDadosDTO.Fonte;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioLacunas;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSaudeDados;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSaudeDados.CoberturaAtivo;
 import lombok.RequiredArgsConstructor;
@@ -60,14 +61,23 @@ public class ServicoSaudeDados {
             new Definicao("BACKUP_MYSQL", "Backup do banco", 30, true,
                     "Rotina 'B3 - Backup MySQL' no Agendador do Windows."),
             new Definicao("BACKTEST", "Backtest walk-forward", 24 * 35, false,
-                    "python -m app.validacao.backtest (gerar-insights).")
+                    "python -m app.validacao.backtest (gerar-insights)."),
+            // Plano LAC (infra V16): sem job/rotina ainda (LAC-INFRA-4, calculo
+            // mensal) - nao criticas de proposito, so aparecem ATRASADA/SEM_DADO
+            // ate essa rotina existir, o que e esperado, nao um problema.
+            new Definicao("EVENTOS_CORPORATIVOS", "Eventos corporativos inferidos (desdobro/grupamento)",
+                    24 * 45, false, "Ainda sem rotina de calculo (Plano LAC, LAC-INFRA-4/LAC-INS-9)."),
+            new Definicao("FATORES", "Fatores de ranking (Plano LAC)", 24 * 35, false,
+                    "Ainda sem rotina de calculo mensal (Plano LAC, LAC-INFRA-4).")
     );
 
     private final RepositorioSaudeDados repositorio;
+    private final RepositorioLacunas repositorioLacunas;
 
     public SaudeDadosDTO montar() {
         LocalDateTime agora = LocalDateTime.now();
-        Map<String, LocalDateTime> ultimas = repositorio.ultimasAtualizacoes();
+        Map<String, LocalDateTime> ultimas = new java.util.HashMap<>(repositorio.ultimasAtualizacoes());
+        ultimas.putAll(repositorioLacunas.ultimosCalculos());
         Map<String, String> erros = repositorio.ultimosErros();
 
         RepositorioSaudeDados.CoberturaInsightsBase insightsBase = repositorio.coberturaInsightsBase();
@@ -96,7 +106,8 @@ public class ServicoSaudeDados {
                 ativos,
                 new SaudeDadosDTO.ChecagemPrecos(JANELA_PRECOS_DIAS, LIMITE_DIVERGENCIA,
                         repositorio.paresComparados(JANELA_PRECOS_DIAS), divergencias),
-                aliases);
+                aliases,
+                repositorioLacunas.coberturaProventosContabeis());
     }
 
     private static Fonte fonte(Definicao d, LocalDateTime ultima, String erro, LocalDateTime agora) {

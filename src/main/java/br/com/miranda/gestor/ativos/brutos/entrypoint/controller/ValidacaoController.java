@@ -49,9 +49,17 @@ public class ValidacaoController {
         return ResponseEntity.ok(servicoSaudeDados.montar());
     }
 
-    /** Placar do ultimo backtest walk-forward, por versao da regra e periodo (CTR-14). */
+    /**
+     * Placar do ultimo backtest walk-forward, por versao da regra e periodo
+     * (CTR-14). {@code metodo=RANKING} (Plano LAC, LAC-GES-1, infra V16) troca
+     * pelo metodo de ranking: correlacao de Spearman media por janela e
+     * retorno por quintil, em vez do placar por classe de recomendacao.
+     */
     @GetMapping("/backtest")
-    public ResponseEntity<BacktestDTO> backtest() {
+    public ResponseEntity<?> backtest(@RequestParam(required = false) String metodo) {
+        if ("RANKING".equalsIgnoreCase(metodo)) {
+            return ResponseEntity.ok(servicoBacktest.montarRanking());
+        }
         return ResponseEntity.ok(servicoBacktest.montar());
     }
 }
