@@ -33,7 +33,7 @@ Fluxo SDD: `Spec → Plano → Tarefas → Implementação → Verificação →
 **Hub:** `infra-b3-ecossytem/SPEC.md` seção 1A — fila única, contratos, handoff e diário. Leia antes de codar; atualize lá ao pegar e ao fechar tarefa. Em conflito com seções antigas abaixo, vale o hub e esta seção.
 
 - **Dono neste repo:** API HTTP, coleta BRAPI (orçamento, ciclo intradiário :05/:35 das 10h às 17h, snapshot 17:40), scheduler, leitura de `insight_acao`/`indicador_fundamentalista`/`provento_contabil`/`fator_valor`. **Não cria tabelas** (Flyway; `ddl-auto=validate`); tabelas novas são lidas por JDBC e devolvem vazio sem a migration (nunca 500).
-- **Endpoints atuais além da tabela da seção 2:** `/ativos/{s}/fatores` (LAC-GES-2), `/ativos/{s}/proventos-contabeis` (LAC-GES-3), `/validacao/saude-dados` com 13 fontes e `coberturaProventosContabeis` (LAC-GES-4), `/validacao/backtest?metodo=RANKING` (LAC-GES-1), favoritos/camada Base, `/setores`, `/pregoes`. GETs não gravam nem publicam.
+- **Endpoints atuais além da tabela da seção 2:** `/ativos/{s}/fatores` (LAC-GES-2), `/ativos/{s}/proventos-contabeis` (LAC-GES-3), `/validacao/saude-dados` com 13 fontes e `coberturaProventosContabeis` (LAC-GES-4), `/validacao/backtest?metodo=RANKING` (LAC-GES-1), favoritos/camada Base, `/setores`, `/pregoes`, `/painel/ativos` (TASK-UX-5). GETs não gravam nem publicam.
 - **Obsoleto nesta spec:** blocos Gemini/S3 e `ddl-auto=update` (hoje `validate`), fluxos de scheduler de 5 s — o ciclo atual é por camada (V13).
 - **Fila local:** LAC-GES-1..4 `IMPLEMENTADO` (f548f97). Sem tarefa aberta própria; quando o painel (LAC-FE-*) pedir campo novo, abrir tarefa no hub.
 - **Arquivos não commitados de outra sessão (contratos/inbox):** `entrypoint/controller/*`, `ServicoAtivo`, `ServicoAtualizacaoCache`, `ConsolidadorAnaliseAcao`, `application.properties`, `contracts/` — não editar nem commitar sem o dono.
@@ -63,6 +63,7 @@ Fluxo SDD: `Spec → Plano → Tarefas → Implementação → Verificação →
 | GET | `/api/v2/stocks/historical` | Proxy para a BRAPI (`symbols`, `range`, `interval`, `startDate`, `endDate`, `sortOrder`) | — |
 | GET | `/empresas/{simbolo}/comunicados` | Linha do tempo dos comunicados oficiais da CVM do ticker (`categorias`, `desde`, `ate`, `pagina`, `tamanho` ≤ 100), mais recente primeiro (`LinhaDoTempoComunicadosDTO`) | — |
 | GET | `/comunicados/newsletter` | Edição da carteira monitorada agrupada por ticker e ordenada por relevância (`semana` ISO `2026-W39`, ou `desde`+`ate`; sem parâmetro, a semana do documento mais recente) (`NewsletterComunicadosDTO`) | — |
+| GET | `/painel/ativos` | Tabela única paginada para o painel, combinando Base, Favoritos, Monitorados e Setores em uma resposta com preço oficial, variação, sparkline, sinal, último comunicado e selos (`AtivoListagemDTO`) | — |
 | GET | `/actuator/health`, `/actuator/prometheus` | Saúde e métricas | — |
 
 ### 2.2 Fluxos principais
@@ -203,6 +204,7 @@ OBSOLETO — descrevia o prompt enviado ao Gemini (removido). O prompt pedia "ri
 | REQ-13 | Expor o diário de sinais (`GET /validacao/diario?simbolo=&limite=`): totais, placar por versão × recomendação × horizonte com taxa-base da direção apostada (compra: fração de janelas em alta; venda: em queda) e selo de amostra mínima (30), e a linha do tempo dos sinais com o resultado de cada horizonte | IMPLEMENTADO (2026-09-26, `ValidacaoController` + `ServicoDiarioDeSinais`). Lê `sinal_diario`/`sinal_resultado` (`infra#CTR-11`, escritas só pelo gerar-insights) por `NamedParameterJdbcTemplate`, sem entidade JPA, com leitura JDBC; Hibernate configurado para validação. Janelas com `evento_suspeito` ficam fora do placar. `ServicoDiarioDeSinaisTest` (7 casos) |
 | REQ-12 | Manter o histórico diário completo do CDI (SGS 12) desde `indices.macro.historico.inicio` (padrão 2016-01-01), base do excesso sobre o CDI no backtest e no diário de sinais | IMPLEMENTADO (2026-09-26, `CargaHistoricoIndicesMacro` na subida, em thread virtual): busca ano a ano só o que falta antes do ponto mais antigo (folga de 7 dias para o 1º dia útil) e buracos recentes maiores que o ciclo horário; com a série completa não faz chamada. `ServicoAtualizacaoIndicesMacroTest` (6 casos) |
 | REQ-11 | Expor os comunicados oficiais da CVM (base IPE) por ticker e como newsletter da carteira | IMPLEMENTADO (2026-09-26, `ComunicadoController` + `ServicoComunicados`); lê `comunicado_cvm` (`infra#CTR-08`, escrita só pelo ETL) juntando com `cvm_ticker`; contrato HTTP `infra#CTR-10`. Somente leitura: entidade `@Immutable`, sem `unique` declarado e Hibernate configurado para validação |
+| REQ-14 | Expor listagem única de ativos para o painel, evitando 3 chamadas por linha na fusão Base + Favoritos + Setores + Monitorados | IMPLEMENTADO (2026-10-07, `GET /painel/ativos`, TASK-UX-5); leitura JDBC, sem BRAPI, sem gravação e sem publicação |
 
 Critérios de aceite de referência:
 - **REQ-02** — *Dado* que a BRAPI devolve PETR4, *quando* `GET /ativos/PETR4` é chamado, *então* uma mensagem com `symbol=PETR4` e `regularMarketPrice` numérico chega a `tratar-ativos`.
@@ -290,6 +292,7 @@ Critérios de aceite de referência:
 | TASK-24 | Limpeza do `pom.xml` | ISS-15 | Build verde; imagem menor | TASK-04 | PLANEJADO |
 | TASK-25 | API de comunicados oficiais da CVM: linha do tempo por ticker e newsletter semanal | REQ-11 | Critério REQ-11 passa; `ServicoComunicadosTest` verde | ETL `--comunicados` (etl#REQ-09) | IMPLEMENTADO (2026-09-26) |
 | TASK-26 | Tela de comunicados no painel (`#/comunicados`) consumindo `infra#CTR-10` | REQ-11 | Chips por ticker, linha do tempo, link "Abrir documento na CVM ↗" | TASK-25 | IMPLEMENTADO (2026-09-26, `painel#REQ-08`) |
+| TASK-UX-5 | Endpoint de listagem única de ativos para o painel (`GET /painel/ativos`) com preço, variação, sparkline, sinal, último comunicado, favorito, setor e selos | REQ-14, `painel#TASK-UX-5` | Resposta paginada entrega a linha inteira em duas leituras por página; GET sem efeito colateral; teste de serviço cobre variação, sinal/comunicado ausentes, defasagem e limite de tamanho | — | IMPLEMENTADO (2026-10-07) |
 
 ---
 
