@@ -23,8 +23,8 @@ import java.util.function.Function;
 @RequiredArgsConstructor
 public class ServicoOpiniaoIa {
 
-    /** Valor de {@code opiniao_ia.modelo} das linhas de baseline por regra. */
-    static final String MODELO_REGRA = "regra";
+    /** Linha que passou na validacao do modelo; REGRA inclui a reserva quando o modelo falhou. */
+    static final String ORIGEM_MODELO = "MODELO";
 
     private final RepositorioOpiniaoIa repositorio;
 
@@ -35,10 +35,14 @@ public class ServicoOpiniaoIa {
                 OpiniaoAtivoDTO.AVISO, horizontes);
     }
 
-    /** Modelo antes de regra; entre linhas do mesmo tipo, a mais recente. Horizontes em ordem crescente. */
+    /**
+     * Origem MODELO antes de REGRA (inclusive a reserva gravada quando o modelo
+     * falhou); entre linhas da mesma origem, a mais recente. A versao de prompt
+     * ja chega filtrada pelo repositorio. Horizontes em ordem crescente.
+     */
     static List<OpiniaoAtivoDTO.Horizonte> escolherPorHorizonte(List<Linha> linhas) {
         Comparator<Linha> preferencia = Comparator
-                .comparing((Linha l) -> MODELO_REGRA.equalsIgnoreCase(l.modelo()))
+                .comparing((Linha l) -> !ORIGEM_MODELO.equalsIgnoreCase(l.origem()))
                 .thenComparing(Linha::criadoEm, Comparator.nullsLast(Comparator.reverseOrder()));
         Map<Integer, Linha> escolhida = new LinkedHashMap<>();
         linhas.stream()
@@ -49,12 +53,13 @@ public class ServicoOpiniaoIa {
 
     private static OpiniaoAtivoDTO.Horizonte paraHorizonte(Linha l) {
         return new OpiniaoAtivoDTO.Horizonte(l.dataPregao(), l.horizontePregoes(), l.opiniao(), l.risco(),
-                lista(l.justificativa(), n -> new OpiniaoAtivoDTO.Justificativa(texto(n, "evidencia_id"), texto(n, "leitura"))),
+                lista(l.justificativa(), n -> new OpiniaoAtivoDTO.Justificativa(
+                        texto(n, "evidencia_id"), texto(n, "trecho_id"), texto(n, "leitura"))),
                 lista(l.invalida(), ServicoOpiniaoIa::textoDoNo),
                 lista(l.dadosAusentes(), ServicoOpiniaoIa::textoDoNo),
                 lista(l.evidencias(), n -> new OpiniaoAtivoDTO.Evidencia(texto(n, "id"), texto(n, "rotulo"),
                         texto(n, "valor"), n.hasNonNull("direcao") ? n.get("direcao").asInt() : null)),
-                l.modelo(), l.origem());
+                l.modelo(), l.origem(), l.versaoPrompt());
     }
 
     private static <T> List<T> lista(JsonNode no, Function<JsonNode, T> conversor) {

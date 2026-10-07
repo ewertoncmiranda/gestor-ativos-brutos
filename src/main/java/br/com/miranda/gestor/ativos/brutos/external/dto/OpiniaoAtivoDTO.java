@@ -22,10 +22,15 @@ public record OpiniaoAtivoDTO(String simbolo, LocalDate dataPregao, String aviso
     public record Horizonte(LocalDate dataPregao, int horizontePregoes, String opiniao, String risco,
                             List<Justificativa> justificativa, List<String> oQueInvalida,
                             List<String> dadosAusentes, List<Evidencia> evidencias,
-                            String modelo, String origem) {
+                            String modelo, String origem, String versaoPrompt) {
     }
 
-    public record Justificativa(String evidenciaId, String leitura) {
+    /**
+     * Cita uma evidencia do dia ({@code evidenciaId}) ou um trecho de
+     * conhecimento do servico de IA ({@code trechoId}, DEC-IA-03); um dos
+     * dois pode vir nulo.
+     */
+    public record Justificativa(String evidenciaId, String trechoId, String leitura) {
     }
 
     public record Evidencia(String id, String rotulo, String valor, Integer direcao) {
