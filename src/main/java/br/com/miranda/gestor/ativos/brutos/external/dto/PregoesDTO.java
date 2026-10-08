@@ -9,7 +9,8 @@ import java.util.List;
  *
  * @param simbolo  codigo canonico (pedir ELET3 devolve AXIA3)
  * @param codigos  codigos usados na serie (canonico + antigos do mesmo papel)
- * @param velas    uma por dia, semana ou mes; {@code data} e o primeiro pregao do grupo
+ * @param velas    uma por dia, semana ou mes; {@code data} e o primeiro pregao do grupo;
+ *                 {@code volumeFinanceiro} em R$ (COTAHIST, somado no grupo; nulo na BRAPI)
  * @param saltos   pregoes com abertura >= 40% longe do fechamento anterior:
  *                 provavel desdobramento/grupamento em preco bruto, nao movimento
  */
@@ -25,7 +26,7 @@ public record PregoesDTO(
         String aviso) {
 
     public record Vela(LocalDate data, LocalDate dataFim, String codigo, BigDecimal abertura, BigDecimal maxima,
-                       BigDecimal minima, BigDecimal fechamento, Long volume, Long numeroNegocios,
+                       BigDecimal minima, BigDecimal fechamento, Long volume, Long numeroNegocios, BigDecimal volumeFinanceiro,
                        int pregoes, String fonte) {
     }
 

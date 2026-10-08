@@ -121,9 +121,12 @@ public class ServicoPregoes {
             Long numeroNegocios = grupo.stream().map(Pregao::numeroNegocios).filter(java.util.Objects::nonNull)
                     .mapToLong(Integer::longValue).sum();
             if (grupo.stream().allMatch(p -> p.numeroNegocios() == null)) numeroNegocios = null;
+            // Em R$, do COTAHIST; somado no grupo como volume e negocios (ticket medio = financeiro / negocios).
+            BigDecimal volumeFinanceiro = grupo.stream().map(Pregao::volumeFinanceiro).filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal::add).orElse(null);
             String fonte = grupo.stream().map(Pregao::fonte).distinct().count() > 1 ? "MISTA" : primeiro.fonte();
             velas.add(new Vela(primeiro.data(), ultimo.data(), ultimo.codigo(), primeiro.abertura(), maxima, minima,
-                    ultimo.fechamento(), volume, numeroNegocios, grupo.size(), fonte));
+                    ultimo.fechamento(), volume, numeroNegocios, volumeFinanceiro, grupo.size(), fonte));
         }
         return velas;
     }
