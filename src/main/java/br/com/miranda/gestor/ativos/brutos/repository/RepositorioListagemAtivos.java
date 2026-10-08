@@ -40,6 +40,7 @@ public class RepositorioListagemAtivos {
             LEFT JOIN ativo_monitorado m ON m.simbolo = u.simbolo AND m.ativo = TRUE
             WHERE (:q IS NULL OR u.simbolo LIKE CONCAT(UPPER(:q), '%') OR e.denominacao LIKE CONCAT('%', :q, '%'))
               AND (:setor IS NULL OR e.setor = :setor)
+              AND (:uf IS NULL OR e.uf_municipio = :uf)
               AND (:somenteFavoritos = FALSE OR m.tipo_coleta = {FAVORITO})
               AND (:somenteMonitorados = FALSE OR m.id IS NOT NULL)
             """.replace("{FAVORITO}", FAVORITO);
@@ -94,7 +95,7 @@ public class RepositorioListagemAtivos {
 
     private final NamedParameterJdbcTemplate jdbc;
 
-    public record Filtro(String q, String setor, boolean somenteFavoritos, boolean somenteMonitorados) {
+    public record Filtro(String q, String setor, String uf, boolean somenteFavoritos, boolean somenteMonitorados) {
     }
 
     public record Linha(String simbolo, String nome, String setor, String situacaoRegistro,
@@ -142,6 +143,7 @@ public class RepositorioListagemAtivos {
         return new MapSqlParameterSource()
                 .addValue("q", filtro.q())
                 .addValue("setor", filtro.setor())
+                .addValue("uf", filtro.uf())
                 .addValue("somenteFavoritos", filtro.somenteFavoritos())
                 .addValue("somenteMonitorados", filtro.somenteMonitorados());
     }
