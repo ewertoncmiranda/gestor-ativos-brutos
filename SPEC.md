@@ -348,3 +348,37 @@ Plano completo e a migração única **V16** em `infra-b3-ecossytem/SPEC.md`, se
 
 - Acesso por JDBC (como `brapi_consumo` e `snapshot_fechamento_brapi`), sem entidade JPA: com `ddl-auto=validate` o gestor não sobe antes da V16 se houver entidade.
 - Aceite: os 4 endpoints respondem com o banco sem a V16 (lista vazia e aviso no log, nunca 500) e com a V16 (dados reais); testes de contrato em `contracts/`.
+
+---
+
+## Plano OPR: APIs de leitura do sistema operável simulado (2026-10-08)
+
+**Status:** PLANEJADO · **Contexto:** `infra-b3-ecossytem/SPEC.md`, Plano OPR. O gestor não decide operação e não calcula regra de entrada/saída; ele expõe ao painel e aos alertas a leitura consistente das tabelas operacionais gravadas pelo `gerar-insights`.
+
+**Meta.** Oferecer endpoints HTTP sem efeito colateral para resumo operacional, operações simuladas, diário, bloqueios e saúde. Todas as rotas são leitura; geração/avaliação do diário fica no worker.
+
+### Contratos HTTP propostos
+
+| Rota | Descrição |
+|---|---|
+| `GET /operacional/resumo` | status atual (`NAO_OPERAVEL`, `EM_OBSERVACAO`, `PAPER_TRADING_ELEGIVEL`, `BLOQUEADO`), retorno líquido, CDI, excesso, drawdown, dias avaliados |
+| `GET /operacional/operacoes?status=ABERTA|FECHADA&simbolo=` | lista operações simuladas com entrada, saída, tamanho, custos e motivo |
+| `GET /operacional/diario?inicio=&fim=` | série diária de patrimônio teórico, retorno bruto/líquido, CDI, excesso e drawdown |
+| `GET /operacional/bloqueios?data=` | sinais rejeitados por liquidez, dado ausente, evento, fundamento futuro ou regra de risco |
+| `GET /operacional/saude` | prontidão dos dados, última avaliação, violações e status para alerta |
+
+### Tarefas desta aplicação
+
+| ID | Tarefa | Resolve | Critério de aceite | Depende de | Status |
+|---|---|---|---|---|---|
+| OPR-GES-1 | Criar repositórios JDBC de leitura para `operacao_simulada`, `diario_operacional`, `evento_operacional` e `regra_operacional`, sem entidades JPA novas | OPR leitura | Banco sem tabelas OPR responde lista vazia/aviso e nunca 500; banco com tabelas retorna dados reais | infra#OPR-INFRA-1 | PLANEJADO |
+| OPR-GES-2 | Implementar `GET /operacional/resumo` e `GET /operacional/diario` com DTOs em camelCase e valores monetários/percentuais consistentes | OPR painel | Teste de serviço cobre CDI, excesso líquido, drawdown e janela sem dados | OPR-GES-1 | PLANEJADO |
+| OPR-GES-3 | Implementar `GET /operacional/operacoes` e `GET /operacional/bloqueios` com filtros por status, símbolo, data e motivo | OPR painel | Filtros são combináveis; operação fechada traz motivo de saída e custos; bloqueio traz motivo legível | OPR-GES-1 | PLANEJADO |
+| OPR-GES-4 | Implementar `GET /operacional/saude` para consumo do painel e do alerta Telegram, com status, última execução e violações de regra | OPR alerta | Retorna `BLOQUEADO` quando dados do dia estão incompletos ou drawdown/liquidez violam limite | OPR-GES-2, OPR-GES-3 | PLANEJADO |
+| OPR-GES-5 | Testes de contrato para as rotas OPR e documentação no SPEC/README, sem introduzir efeito colateral em GET | NFR-02 | Chamar cada GET 5 vezes não altera nenhuma tabela nem publica mensagem | OPR-GES-2..4 | PLANEJADO |
+
+### Aceite local
+
+- `./mvnw test` cobre os serviços OPR com fixtures de banco e sem depender de Docker real.
+- O painel consegue renderizar a aba Operabilidade com dados vazios, parciais e completos.
+- Nenhuma rota OPR inicia coleta, análise, operação ou mensagem; geração é responsabilidade do worker/agendamento.
