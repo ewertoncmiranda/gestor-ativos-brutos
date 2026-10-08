@@ -54,7 +54,8 @@ public class ServicoOpiniaoIa {
     private static OpiniaoAtivoDTO.Horizonte paraHorizonte(Linha l) {
         return new OpiniaoAtivoDTO.Horizonte(l.dataPregao(), l.horizontePregoes(), l.opiniao(), l.risco(),
                 lista(l.justificativa(), n -> new OpiniaoAtivoDTO.Justificativa(
-                        texto(n, "evidencia_id"), texto(n, "trecho_id"), texto(n, "leitura"))),
+                        texto(n, "evidencia_id"), texto(n, "trecho_id"), texto(n, "leitura"),
+                        texto(n, "fonte"), texto(n, "trecho"))),
                 lista(l.invalida(), ServicoOpiniaoIa::textoDoNo),
                 lista(l.dadosAusentes(), ServicoOpiniaoIa::textoDoNo),
                 lista(l.evidencias(), n -> new OpiniaoAtivoDTO.Evidencia(texto(n, "id"), texto(n, "rotulo"),

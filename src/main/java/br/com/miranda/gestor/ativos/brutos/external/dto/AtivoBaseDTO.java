@@ -28,4 +28,8 @@ public interface AtivoBaseDTO {
     Long getTemFundamento();
 
     Long getFavorito();
+
+    String getSituacaoRegistro();
+
+    String getUfMunicipio();
 }

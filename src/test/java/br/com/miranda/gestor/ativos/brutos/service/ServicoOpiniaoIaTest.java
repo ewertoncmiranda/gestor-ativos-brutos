@@ -87,12 +87,14 @@ class ServicoOpiniaoIaTest {
     @Test
     void justificativaComTrechoIdSemEvidenciaId() throws Exception {
         var l = new Linha(PREGAO, 63, "SINAL_NEUTRO", "RISCO_MEDIO",
-                json("[{\"trecho_id\":\"evidencia/momentum#2016-2026\",\"leitura\":\"Momentum bateu o mercado em 49% das semanas.\"}]"),
+                json("[{\"evidencia_id\":null,\"trecho_id\":\"evidencia/momentum#2016-2026\",\"leitura\":\"Momentum bateu o mercado em 49% das semanas.\",\"fonte\":\"conhecimento/evidencia/momentum.md#resultado\",\"trecho\":\"Quintil de maior momentum: 49,1% das semanas.\"}]"),
                 json("[]"), json("[]"), json("[]"), "qwen2.5:1.5b-instruct", "MODELO", "skills@abc", null);
         var j = ServicoOpiniaoIa.escolherPorHorizonte(List.of(l)).get(0).justificativa().get(0);
         assertNull(j.evidenciaId());
         assertEquals("evidencia/momentum#2016-2026", j.trechoId());
         assertTrue(j.leitura().startsWith("Momentum"));
+        assertEquals("conhecimento/evidencia/momentum.md#resultado", j.fonte());
+        assertEquals("Quintil de maior momentum: 49,1% das semanas.", j.trecho());
     }
 
     @Test

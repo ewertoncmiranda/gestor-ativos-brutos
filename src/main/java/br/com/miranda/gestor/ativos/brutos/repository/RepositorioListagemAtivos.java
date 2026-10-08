@@ -47,7 +47,7 @@ public class RepositorioListagemAtivos {
     // A pagina e cortada antes dos enriquecimentos: as subconsultas correlatas
     // rodam so para as linhas devolvidas, nao para o universo inteiro.
     private static final String PAGINA = """
-            SELECT p.simbolo, p.nome, p.setor, p.favorito, p.monitorado,
+            SELECT p.simbolo, p.nome, p.setor, p.situacao_registro, p.favorito, p.monitorado,
                    c.fechamento, c.data_pregao,
                    (SELECT c0.fechamento FROM cotacao_b3_diaria c0
                      WHERE c0.simbolo = p.simbolo AND c0.data_pregao < c.data_pregao
@@ -58,7 +58,7 @@ public class RepositorioListagemAtivos {
                    cc.categoria, cc.assunto, cc.data_entrega, cc.link_download,
                    EXISTS(SELECT 1 FROM indicador_fundamentalista f WHERE f.simbolo = p.simbolo) AS tem_fundamento
             FROM (
-                SELECT u.simbolo, e.denominacao AS nome, e.setor, t.cnpj,
+                SELECT u.simbolo, e.denominacao AS nome, e.setor, e.situacao_registro, t.cnpj,
                        COALESCE(m.tipo_coleta = {FAVORITO}, FALSE) AS favorito,
                        (m.id IS NOT NULL) AS monitorado
                 {UNIVERSO_FILTRADO}
@@ -97,7 +97,8 @@ public class RepositorioListagemAtivos {
     public record Filtro(String q, String setor, boolean somenteFavoritos, boolean somenteMonitorados) {
     }
 
-    public record Linha(String simbolo, String nome, String setor, boolean favorito, boolean monitorado,
+    public record Linha(String simbolo, String nome, String setor, String situacaoRegistro,
+                        boolean favorito, boolean monitorado,
                         BigDecimal fechamento, LocalDate dataPregao, BigDecimal fechamentoAnterior,
                         LocalDate ultimoPregaoMercado, String recomendacao, LocalDateTime dataAnalise,
                         String versaoRegra, String categoriaComunicado, String assuntoComunicado,
@@ -110,6 +111,7 @@ public class RepositorioListagemAtivos {
                 .addValue("deslocamento", deslocamento);
         return jdbc.query(PAGINA, parametros, (rs, i) -> new Linha(
                 rs.getString("simbolo"), rs.getString("nome"), rs.getString("setor"),
+                rs.getString("situacao_registro"),
                 rs.getBoolean("favorito"), rs.getBoolean("monitorado"),
                 rs.getBigDecimal("fechamento"), data(rs, "data_pregao"), rs.getBigDecimal("fechamento_anterior"),
                 data(rs, "ultimo_pregao_mercado"), rs.getString("recomendacao"), dataHora(rs, "data_analise"),

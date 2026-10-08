@@ -99,6 +99,9 @@ public class IndicadorFundamentalistaEntity {
     @Column(name = "fluxo_caixa_livre", precision = 24, scale = 2)
     private BigDecimal fluxoCaixaLivre;
 
+    @Column(name = "fco_bruto", precision = 24, scale = 2)
+    private BigDecimal fcoBruto;
+
     @Column(length = 20, nullable = false)
     private String fonte;
 

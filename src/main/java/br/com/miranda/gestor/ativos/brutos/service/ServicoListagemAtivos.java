@@ -57,7 +57,8 @@ public class ServicoListagemAtivos {
                 || (l.ultimoPregaoMercado() != null && l.dataPregao().isBefore(l.ultimoPregaoMercado()));
         AtivoListagemDTO.Selos selos = new AtivoListagemDTO.Selos(
                 l.favorito(), l.monitorado(), l.temFundamento(), defasado);
-        return new AtivoListagemDTO(l.simbolo(), l.nome(), l.setor(), l.fechamento(), l.dataPregao(),
+        return new AtivoListagemDTO(l.simbolo(), l.nome(), l.setor(), l.situacaoRegistro(),
+                l.fechamento(), l.dataPregao(),
                 variacaoPercentual(l.fechamento(), l.fechamentoAnterior()), serie, sinal, comunicado, selos);
     }
 

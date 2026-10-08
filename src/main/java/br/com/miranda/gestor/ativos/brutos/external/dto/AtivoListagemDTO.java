@@ -21,6 +21,7 @@ public record AtivoListagemDTO(
         String simbolo,
         String nome,
         String setor,
+        String situacaoRegistro,
         BigDecimal ultimoFechamento,
         LocalDate dataUltimoFechamento,
         BigDecimal variacaoPercentual,
