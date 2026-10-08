@@ -28,9 +28,11 @@ public record OpiniaoAtivoDTO(String simbolo, LocalDate dataPregao, String aviso
     /**
      * Cita uma evidencia do dia ({@code evidenciaId}) ou um trecho de
      * conhecimento do servico de IA ({@code trechoId}, DEC-IA-03); um dos
-     * dois pode vir nulo.
+     * dois pode vir nulo. Para trecho, {@code fonte} (caminho da ficha) e
+     * {@code trecho} (texto citado) vem congelados na geracao; nulos para
+     * evidencia do dia.
      */
-    public record Justificativa(String evidenciaId, String trechoId, String leitura) {
+    public record Justificativa(String evidenciaId, String trechoId, String leitura, String fonte, String trecho) {
     }
 
     public record Evidencia(String id, String rotulo, String valor, Integer direcao) {
