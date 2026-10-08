@@ -20,10 +20,13 @@ public class ConfigProperties {
     @Value("${aws.sqs.historical-series.queue.url:http://localstack:4566/000000000000/sqs-registrar-series-historicas}")
     private String awsSqsHistoricalSeriesQueueUrl;
 
-    @Value("${aws.accessKeyId:test}")
+    @Value("${aws.region:${AWS_REGION:sa-east-1}}")
+    private String awsRegion;
+
+    @Value("${aws.accessKeyId:${AWS_ACCESS_KEY_ID:}}")
     private String awsAccessKeyId;
 
-    @Value("${aws.secretAccessKey:test}")
+    @Value("${aws.secretAccessKey:${AWS_SECRET_ACCESS_KEY:}}")
     private String awsSecretAccessKey;
 
     @Value("${brapi.api.key:}")
