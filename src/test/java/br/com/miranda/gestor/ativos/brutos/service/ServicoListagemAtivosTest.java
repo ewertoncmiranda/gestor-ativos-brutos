@@ -18,7 +18,7 @@ import static org.mockito.Mockito.*;
 
 class ServicoListagemAtivosTest {
 
-    private static final Filtro SEM_FILTRO = new Filtro(null, null, false, false);
+    private static final Filtro SEM_FILTRO = new Filtro(null, null, null, false, false);
     private static final LocalDate HOJE = LocalDate.of(2026, 10, 6);
 
     private static Linha linha(String simbolo, BigDecimal fechamento, LocalDate data, BigDecimal anterior,

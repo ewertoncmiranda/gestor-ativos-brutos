@@ -27,6 +27,7 @@ public class ListagemAtivosController {
     /**
      * @param q           prefixo do simbolo ou trecho do nome da empresa
      * @param setor       setor exato (valores de {@code /base/setores})
+     * @param uf          UF da sede ({@code cvm_empresa.uf_municipio}, V18; REQ-ETL-1 do painel)
      * @param favoritos   so favoritos (coleta intradiaria BRAPI)
      * @param monitorados so ativos cadastrados em ativo_monitorado
      */
@@ -34,12 +35,19 @@ public class ListagemAtivosController {
     public Page<AtivoListagemDTO> listar(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String setor,
+            @RequestParam(required = false) String uf,
             @RequestParam(defaultValue = "false") boolean favoritos,
             @RequestParam(defaultValue = "false") boolean monitorados,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "" + TAMANHO_PAGINA_PADRAO) int tamanho) {
-        Filtro filtro = new Filtro(normalizarOuNulo(q), normalizarOuNulo(setor), favoritos, monitorados);
+        Filtro filtro = new Filtro(normalizarOuNulo(q), normalizarOuNulo(setor),
+                ufOuNulo(uf), favoritos, monitorados);
         return servico.listar(filtro, pagina, tamanho);
+    }
+
+    private static String ufOuNulo(String valor) {
+        String uf = normalizarOuNulo(valor);
+        return uf == null ? null : uf.toUpperCase(java.util.Locale.ROOT);
     }
 
     private static String normalizarOuNulo(String valor) {

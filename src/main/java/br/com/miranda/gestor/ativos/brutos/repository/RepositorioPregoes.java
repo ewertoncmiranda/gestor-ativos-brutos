@@ -26,7 +26,7 @@ public class RepositorioPregoes {
 
     public record Pregao(LocalDate data, String codigo, BigDecimal abertura, BigDecimal maxima,
                          BigDecimal minima, BigDecimal fechamento, Long volume,
-                         Integer numeroNegocios, String fonte) {
+                         Integer numeroNegocios, BigDecimal volumeFinanceiro, String fonte) {
     }
 
     /**
@@ -44,14 +44,14 @@ public class RepositorioPregoes {
 
     public List<Pregao> oficiais(List<String> codigos, LocalDate de, LocalDate ate) {
         return jdbc.query(
-                "SELECT data_pregao, simbolo, abertura, maxima, minima, fechamento, volume, numero_negocios "
+                "SELECT data_pregao, simbolo, abertura, maxima, minima, fechamento, volume, numero_negocios, volume_financeiro "
                         + "FROM cotacao_b3_diaria WHERE simbolo IN (:codigos) "
                         + "AND data_pregao BETWEEN :de AND :ate ORDER BY data_pregao",
                 new MapSqlParameterSource("codigos", codigos).addValue("de", de).addValue("ate", ate),
                 (rs, i) -> new Pregao(rs.getDate("data_pregao").toLocalDate(), rs.getString("simbolo"),
                         rs.getBigDecimal("abertura"), rs.getBigDecimal("maxima"), rs.getBigDecimal("minima"),
                         rs.getBigDecimal("fechamento"), rs.getObject("volume", Long.class),
-                        rs.getObject("numero_negocios", Integer.class), "B3_COTAHIST"));
+                        rs.getObject("numero_negocios", Integer.class), rs.getBigDecimal("volume_financeiro"), "B3_COTAHIST"));
     }
 
     /** Velas da BRAPI depois de {@code depoisDe} (dias que o COTAHIST ainda nao tem). */
@@ -65,6 +65,6 @@ public class RepositorioPregoes {
                         rs.getBigDecimal("open"), rs.getBigDecimal("high"), rs.getBigDecimal("low"),
                         rs.getBigDecimal("close"),
                         rs.getBigDecimal("volume") == null ? null : rs.getBigDecimal("volume").longValue(),
-                        null, "BRAPI"));
+                        null, null, "BRAPI"));
     }
 }
