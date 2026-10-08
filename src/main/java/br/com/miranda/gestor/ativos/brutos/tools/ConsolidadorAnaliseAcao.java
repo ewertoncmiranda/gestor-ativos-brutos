@@ -89,8 +89,8 @@ public final class ConsolidadorAnaliseAcao {
     }
 
     private static boolean ehSinalDeVenda(String recomendacao) {
-        return br.com.miranda.gestor.ativos.brutos.contracts.Recomendacao.VENDA_VALUATION.name().equals(recomendacao)
-                || "VENDA".equals(recomendacao); // compatibilidade com registros legados
+        return recomendacao != null
+                && (recomendacao.startsWith("VENDA_") || "VENDA".equals(recomendacao));
     }
 
     private static Map<String, Object> consolidarIndicadores(List<AnaliseAcaoEntity> analises) {

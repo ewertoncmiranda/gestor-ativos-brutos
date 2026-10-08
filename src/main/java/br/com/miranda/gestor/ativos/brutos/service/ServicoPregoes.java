@@ -118,9 +118,12 @@ public class ServicoPregoes {
                     .min(BigDecimal::compareTo).orElse(null);
             Long volume = grupo.stream().map(Pregao::volume).filter(java.util.Objects::nonNull)
                     .reduce(Long::sum).orElse(null);
+            Long numeroNegocios = grupo.stream().map(Pregao::numeroNegocios).filter(java.util.Objects::nonNull)
+                    .mapToLong(Integer::longValue).sum();
+            if (grupo.stream().allMatch(p -> p.numeroNegocios() == null)) numeroNegocios = null;
             String fonte = grupo.stream().map(Pregao::fonte).distinct().count() > 1 ? "MISTA" : primeiro.fonte();
             velas.add(new Vela(primeiro.data(), ultimo.data(), ultimo.codigo(), primeiro.abertura(), maxima, minima,
-                    ultimo.fechamento(), volume, grupo.size(), fonte));
+                    ultimo.fechamento(), volume, numeroNegocios, grupo.size(), fonte));
         }
         return velas;
     }

@@ -28,7 +28,9 @@ public interface RepositorioBaseAtivos extends JpaRepository<CvmTickerEntity, St
                            c.fechamento AS ultimoFechamento,
                            c.data_pregao AS dataUltimoFechamento,
                            EXISTS(SELECT 1 FROM indicador_fundamentalista i WHERE i.simbolo = t.simbolo) AS temFundamento,
-                           EXISTS(SELECT 1 FROM ativo_monitorado m WHERE m.simbolo = t.simbolo AND m.ativo = TRUE) AS favorito
+                           EXISTS(SELECT 1 FROM ativo_monitorado m WHERE m.simbolo = t.simbolo AND m.ativo = TRUE) AS favorito,
+                           e.situacao_registro AS situacaoRegistro,
+                           e.uf_municipio AS ufMunicipio
                     FROM cvm_ticker t
                     JOIN cvm_empresa e ON e.cnpj = t.cnpj
                     LEFT JOIN cotacao_b3_diaria c
@@ -37,6 +39,7 @@ public interface RepositorioBaseAtivos extends JpaRepository<CvmTickerEntity, St
                     WHERE t.ativo = TRUE
                       AND (:q IS NULL OR t.simbolo LIKE CONCAT(UPPER(:q), '%') OR e.denominacao LIKE CONCAT('%', :q, '%'))
                       AND (:setor IS NULL OR e.setor = :setor)
+                      AND (:uf IS NULL OR e.uf_municipio = :uf)
                     ORDER BY t.simbolo
                     """,
             countQuery = """
@@ -46,9 +49,11 @@ public interface RepositorioBaseAtivos extends JpaRepository<CvmTickerEntity, St
                     WHERE t.ativo = TRUE
                       AND (:q IS NULL OR t.simbolo LIKE CONCAT(UPPER(:q), '%') OR e.denominacao LIKE CONCAT('%', :q, '%'))
                       AND (:setor IS NULL OR e.setor = :setor)
+                      AND (:uf IS NULL OR e.uf_municipio = :uf)
                     """,
             nativeQuery = true)
-    Page<AtivoBaseDTO> buscar(@Param("q") String q, @Param("setor") String setor, Pageable pagina);
+    Page<AtivoBaseDTO> buscar(@Param("q") String q, @Param("setor") String setor, @Param("uf") String uf,
+            Pageable pagina);
 
     /** Setores distintos com pelo menos um ticker ativo, para o filtro da tela. */
     @Query(

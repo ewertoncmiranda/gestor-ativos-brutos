@@ -75,6 +75,10 @@ public class FundamentosCvmDTO {
     @JsonProperty("fluxo_caixa_livre")
     private BigDecimal fluxoCaixaLivre;
 
+    // --- fluxo de caixa ---
+    @JsonProperty("fco_bruto")
+    private BigDecimal fcoBruto;
+
     // --- resultado ---
     @JsonProperty("receita_liquida")
     private BigDecimal receitaLiquida;
@@ -124,6 +128,7 @@ public class FundamentosCvmDTO {
                 .caixaEquivalentes(entidade.getCaixaEquivalentes())
                 .fluxoCaixaOperacional(entidade.getFluxoCaixaOperacional())
                 .fluxoCaixaLivre(entidade.getFluxoCaixaLivre())
+                .fcoBruto(entidade.getFcoBruto())
                 .receitaLiquida(entidade.getReceitaLiquida())
                 .ebit(entidade.getEbit())
                 .lucroLiquido(entidade.getLucroLiquido())

@@ -23,7 +23,7 @@ class ServicoListagemAtivosTest {
 
     private static Linha linha(String simbolo, BigDecimal fechamento, LocalDate data, BigDecimal anterior,
                                String recomendacao, LocalDate entregaComunicado) {
-        return new Linha(simbolo, "Empresa " + simbolo, "Energia", true, true, fechamento, data, anterior, HOJE,
+        return new Linha(simbolo, "Empresa " + simbolo, "Energia", null, true, true, fechamento, data, anterior, HOJE,
                 recomendacao, recomendacao == null ? null : LocalDateTime.of(2026, 10, 6, 7, 1),
                 recomendacao == null ? null : "2026.09.27-3", "FATO_RELEVANTE", "Assunto",
                 entregaComunicado, "http://cvm/x", true);

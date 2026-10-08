@@ -31,12 +31,14 @@ public class BaseAtivosController {
     public Page<AtivoBaseDTO> listar(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String setor,
+            @RequestParam(required = false) String uf,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "" + TAMANHO_PAGINA_PADRAO) int tamanho) {
         Pageable pageable = PageRequest.of(pagina, tamanho, Sort.by("simbolo"));
         String qNormalizado = normalizarOuNulo(q);
         String setorNormalizado = normalizarOuNulo(setor);
-        return repositorioBaseAtivos.buscar(qNormalizado, setorNormalizado, pageable);
+        String ufNormalizado = normalizarOuNulo(uf);
+        return repositorioBaseAtivos.buscar(qNormalizado, setorNormalizado, ufNormalizado, pageable);
     }
 
     @GetMapping("/base/setores")
