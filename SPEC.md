@@ -222,7 +222,7 @@ Critérios de aceite de referência:
 | NFR-03 | Resiliência nas integrações (BRAPI, SQS) com backoff e timeouts | EM ANDAMENTO (`ISS-10`) |
 | NFR-04 | Schema com proprietário único; aplicação só valida | IMPLEMENTADO — Flyway na infraestrutura; validate em configuração base, dev, test e compose |
 | NFR-05 | Testes unitários e de integração reais no CI | PLANEJADO (`ISS-04`) |
-| NFR-06 | Logs estruturados enviados ao ELK sem ruído nem duplicação | EM ANDAMENTO (`ISS-12`) |
+| NFR-06 | Logs estruturados enviados ao ELK sem ruído nem duplicação | IMPLEMENTADO (2026-10-08: Logstash só no perfil docker; arquivo só fora do docker) |
 | NFR-07 | Imagem mínima (JRE), sem root, com perfil de configuração existente | PLANEJADO (`ISS-11`) |
 
 ---
@@ -238,13 +238,13 @@ Critérios de aceite de referência:
 | ISS-03 | Alto | Condição de corrida: publica no SQS e **lê `insight_acao` na sequência**, antes de o worker processar a mensagem | `service/ServicoAtivo.java` (`processar`, `processarRobusto`) | A análise da IA ignora o dado recém-coletado; na primeira coleta de um ativo não há análise | Separar os passos: a análise de IA roda em outro gatilho (evento "insight gerado" via SNS/SQS ou agendamento posterior) | PLANEJADO |
 | ISS-04 | Alto | Não há testes reais (o único teste é `assertTrue(true)`); o build usa `-DskipTests` | `src/test/.../GestorAtivosBrutosApplicationTests.java`, `Dockerfile` | Regressões passam direto | Testes unitários de consolidador/prompt/serviços e de integração com Testcontainers (MySQL + LocalStack) | PLANEJADO |
 | ISS-05 | Alto | Propriedade de schema unificada | Flyway da infraestrutura; Hibernate validate; inicialização SQL desativada | Evita alteração de tabelas por ORM | IMPLEMENTADO |
-| ISS-06 | Médio | `ConfigSqs` ignora a configuração: credenciais fixas `"test"/"test"` e região fixa `SA_EAST_1` | `config/ConfigSqs.java` | Não funciona em AWS real | Usar `DefaultCredentialsProvider` (ou as properties) e região configurável | PLANEJADO |
+| ISS-06 | Médio | `ConfigSqs` ignora a configuração: credenciais fixas `"test"/"test"` e região fixa `SA_EAST_1` | `config/ConfigSqs.java` | Não funciona em AWS real | Região vem de property/env; credenciais estáticas só quando configuradas, senão usa `DefaultCredentialsProvider` | IMPLEMENTADO (2026-10-08) |
 | ISS-07 | Médio | `ConversorJson` usa `new ObjectMapper()` sem `JavaTimeModule`; `Ativo.regularMarketTime` é `LocalDateTime` e vem de uma String via ModelMapper | `tools/ConversorJson.java`, `external/Ativo.java` | O campo tende a chegar nulo, ou a serialização falha se for preenchido; o consumidor perde o timestamp da cotação, necessário para idempotência | Injetar o `ObjectMapper` do Spring; converter o epoch da BRAPI para `Instant`; teste de contrato | PLANEJADO (a verificar com teste) |
 | ISS-08 | Médio | ~~O agendador não é recorrente e a fila fica em memória~~ | `entrypoint/schedule/AgendadorAtivos.java` | ~~Perda de trabalho no restart; README incorreto~~ | Carteira persistida em `ativo_monitorado` + tick de 5s checando `intervalo_segundos` por ativo + deduplicação por `UNIQUE KEY` | IMPLEMENTADO (2026-09-25) — falta ainda restringir ao horário de pregão, ver `TASK-20` |
 | ISS-09 | Médio | GETs de cotação, histórico e perfil gravavam ou publicavam no fallback | Fallbacks consultam sem persistência; cadastro POST e agendador mantêm escrita | Sem efeitos de negócio ao navegar | IMPLEMENTADO |
 | ISS-10 | Médio | Retentativas do SQS sem backoff; `RestTemplate` sem timeout; a espera de 4 s bloqueia a thread do scheduler | `AdaptadorFilaSqs.java`, `ClienteBrApi.java`, `AgendadorAtivos.java` | Tempestade de retentativas; threads presas | Backoff exponencial (Resilience4j/Spring Retry); timeouts de conexão e leitura; rate limiter | PLANEJADO |
 | ISS-11 | Médio | Dockerfile: JDK completo em runtime, root, perfil `docker` inexistente, `-DskipTests`, compila com Temurin 24 para alvo Java 21 | `Dockerfile` | Imagem pesada e insegura; sem o compose, a imagem sobe sem configuração | Runtime `eclipse-temurin:21-jre-alpine`, `USER` não-root, `application-docker.properties`, rodar os testes no build/CI | PLANEJADO |
-| ISS-12 | Médio | Logback envia sempre para `logstash:5000` e também grava em arquivo com padrão texto, que o Logstash lê com codec JSON | `src/main/resources/logback-spring.xml`, `infra-b3-ecossytem/logstash.conf` | Erros de conexão fora do Docker; parse falho e logs duplicados no Elasticsearch | Appender Logstash só no perfil docker (`<springProfile>`); arquivo em JSON **ou** remover o input de arquivo | PLANEJADO |
+| ISS-12 | Médio | Logback envia sempre para `logstash:5000` e também grava em arquivo com padrão texto, que o Logstash lê com codec JSON | `src/main/resources/logback-spring.xml`, `infra-b3-ecossytem/logstash.conf` | Erros de conexão fora do Docker; parse falho e logs duplicados no Elasticsearch | Appender Logstash só no perfil docker; arquivo só fora do docker. O input de arquivo da infra fica para logs locais legados | IMPLEMENTADO (2026-10-08) |
 | ISS-13 | Baixo | Prompt pede "risco 0-100", mas o schema espera string; `variacaoMedia` é na verdade a margem média | `tools/MontadorPromptAnalise.java`, `ServicoGemini.java` | Saída da IA inconsistente | Alinhar prompt e schema; renomear para `margemSegurancaMedia` | PLANEJADO |
 | ISS-14 | Médio | 15 arquivos registrado no códigos (renomeação de controllers, série histórica, remoção de classes) | `git status` | Risco de perda; PR grande demais | Commitar em partes (refactor de nomes ≠ feature) **depois** de resolver `ISS-01` | PLANEJADO |
 | ISS-15 | Baixo | Dependências não usadas: WebFlux (junto com Web MVC), OpenFeign, `jackson-module-kotlin`; `mapstruct-processor` configurado sem MapStruct; `show-sql=true` | `pom.xml`, properties | Build e imagem maiores; logs verbosos | Limpar o `pom.xml`; `show-sql` só em debug | PLANEJADO |
@@ -254,7 +254,7 @@ Critérios de aceite de referência:
 
 ### 7.2 Visão de analista financeiro
 - **F1 (OBSOLETO):** era sobre o Gemini receber só médias agregadas e poder alucinar. Sem IA, não se aplica mais — a decisão é 100% determinada pelas mesmas médias, sem inferência.
-- **F2:** a resposta contém o campo `recomendacao` em texto (COMPRA/VENDA/NEUTRO), sem aviso legal. O risco regulatório (CVM Res. 20/2021) descrito em `gerar-insights` `ISS-F6` continua valendo mesmo sem IA — é uma recomendação de investimento devolvida por API. Inclua um disclaimer fixo na resposta.
+- **F2:** IMPLEMENTADO (2026-10-08). A resposta determinística inclui `aviso_legal` fixo informando que o conteúdo é quantitativo experimental e não constitui recomendação de investimento, análise de valores mobiliários ou oferta.
 - **F3 (OBSOLETO):** era sobre misturar metodologias (regras Graham + LLM) sem rastreabilidade. Sem Gemini, só resta a metodologia determinística única — não há mais mistura a rastrear.
 
 ---
@@ -278,9 +278,9 @@ Critérios de aceite de referência:
 | TASK-10 | `ObjectMapper` do Spring + `regularMarketTime` como `Instant` ISO-8601 no payload | ISS-07 | Teste de contrato: a mensagem publicada contém `regularMarketTime` não nulo | TASK-04 | PLANEJADO |
 | TASK-11 | `ddl-auto=validate` | ISS-05 | A aplicação falha no startup se o schema divergir | DEC do ecossistema sobre schema | PLANEJADO |
 | TASK-12 | `GET /ativos/{ativo}` sem efeito colateral; `POST /ativos/{ativo}/coletas` publica; atributo `dedupKey` na mensagem | ISS-09, NFR-02 | Chamar o GET 5× não gera mensagens | — | PLANEJADO |
-| TASK-13 | Configuração SQS via properties e cadeia de credenciais padrão | ISS-06 | Mesma imagem funciona com LocalStack e com AWS real mudando só o env | — | PLANEJADO |
+| TASK-13 | Configuração SQS via properties e cadeia de credenciais padrão | ISS-06 | Mesma imagem funciona com LocalStack e com AWS real mudando só o env | — | IMPLEMENTADO (2026-10-08) |
 | TASK-14 | Backoff + timeouts (Resilience4j) para BRAPI e SQS | ISS-10, NFR-03 | Testes com falha simulada respeitam o backoff | TASK-04 | PLANEJADO |
-| TASK-15 | Logback por perfil; logs de arquivo em JSON | ISS-12, NFR-06 | Cada evento aparece uma vez no Kibana | — | PLANEJADO |
+| TASK-15 | Logback por perfil; logs de arquivo em JSON | ISS-12, NFR-06 | Perfil docker envia ao Logstash; fora do docker grava arquivo local, evitando duplicidade | — | IMPLEMENTADO (2026-10-08) |
 
 ### Fase 2 — Produto
 
@@ -288,7 +288,7 @@ Critérios de aceite de referência:
 |---|---|---|---|---|---|
 | TASK-20 | Carteira persistida + coleta agendada por cron no horário do pregão | ISS-08, REQ-06 | Ativos da carteira coletados 1×/dia útil, sem duplicata | TASK-12 | EM ANDAMENTO (2026-09-25) — carteira persistida (`ativo_monitorado`) e reprocessamento recorrente a cada 30s implementados; falta restringir ao horário de pregão (hoje roda 24/7) |
 | TASK-21 | Análise de IA disparada por evento "insight gerado" (SNS `transmitir-lote-dados` ou fila nova), não na sequência da publicação | ISS-03, REQ-07 | A análise usa o insight do dia | contrato novo no ecossistema | PLANEJADO |
-| TASK-22 | OBSOLETO — prompt/schema do Gemini removidos; disclaimer legal (`F2`) deve ser adicionado direto na resposta HTTP de `MontadorDecisaoDeterministica` | F2 | Resposta HTTP contém `aviso_legal` | TASK-03 | PLANEJADO (reescopado para F2) |
+| TASK-22 | OBSOLETO — prompt/schema do Gemini removidos; disclaimer legal (`F2`) deve ser adicionado direto na resposta HTTP de `MontadorDecisaoDeterministica` | F2 | Resposta HTTP contém `aviso_legal` | TASK-03 | IMPLEMENTADO (2026-10-08) |
 | TASK-23 | OBSOLETO — S3 removido, sem chave a corrigir | ISS-16 | — | — | IMPLEMENTADO (remoção) |
 | TASK-24 | Limpeza do `pom.xml` | ISS-15 | Build verde; imagem menor | TASK-04 | PLANEJADO |
 | TASK-25 | API de comunicados oficiais da CVM: linha do tempo por ticker e newsletter semanal | REQ-11 | Critério REQ-11 passa; `ServicoComunicadosTest` verde | ETL `--comunicados` (etl#REQ-09) | IMPLEMENTADO (2026-09-26) |

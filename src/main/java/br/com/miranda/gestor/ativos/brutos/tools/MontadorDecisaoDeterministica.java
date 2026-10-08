@@ -5,6 +5,10 @@ import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaAnaliseIaDTO;
 
 public final class MontadorDecisaoDeterministica {
 
+    public static final String AVISO_LEGAL = "Conteúdo quantitativo experimental, baseado em dados "
+            + "públicos e regras do ecossistema. Não constitui recomendação de investimento, análise "
+            + "de valores mobiliários ou oferta de compra e venda.";
+
     private MontadorDecisaoDeterministica() {
     }
 
@@ -35,6 +39,7 @@ public final class MontadorDecisaoDeterministica {
                         "Margem de seguranca media no periodo: %.2f%%.", margemSeguranca))
                 .possivelCenario(cenarioPor(margemSeguranca, percentualVenda))
                 .recomendacao(consolidado.getSinalPredominante())
+                .avisoLegal(AVISO_LEGAL)
                 .build();
     }
 

@@ -35,4 +35,7 @@ public class RespostaAnaliseIaDTO {
     private String possivelCenario;
 
     private String recomendacao;
+
+    @JsonProperty("aviso_legal")
+    private String avisoLegal;
 }
