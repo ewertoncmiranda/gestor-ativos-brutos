@@ -40,7 +40,7 @@ Cliente HTTP
 | `exceptions` | Exceções da aplicação e contrato global de erro. |
 | `config` | Configuração do cliente SQS e propriedades. |
 
-WebFlux e OpenFeign estão declarados no `pom.xml`, mas não são usados pela implementação: as rotas são Spring MVC e a BRAPI é acessada com `RestTemplate`.
+O serviço usa Spring MVC e `RestTemplate`; WebFlux, OpenFeign, Jackson Kotlin e MapStruct foram removidos por não serem usados.
 
 ## Rotas HTTP e controllers
 
@@ -59,6 +59,13 @@ WebFlux e OpenFeign estão declarados no `pom.xml`, mas não são usados pela im
 | `GET` | `/operacional/operacoes` | `OperacionalController.operacoes` | `200` com `OperacionalDTO.Operacoes` | Operações simuladas (`itens`); filtros combináveis `status`, `simbolo`, `inicio`/`fim` (data da decisão de entrada), `motivo` (de saída) e `limite`. Só SELECT. |
 | `GET` | `/operacional/bloqueios` | `OperacionalController.bloqueios` | `200` com `OperacionalDTO.Bloqueios` | Sinais rejeitados por dado ou liquidez, de `evento_operacional`, agrupados por ativo: `itens [{simbolo, faixa, motivos [{codigo, descricao, detalhe, valor, limite}]}]` (`data`, `simbolo`, `motivo`, `limite`). Só SELECT. |
 | `GET` | `/operacional/saude` | `OperacionalController.saude` | `200` com `OperacionalDTO.Saude` | Prontidão para o painel e o alerta (`status`, `ultimaExecucao`, `dadosDoDiaCompletos`, `violacoes [{codigo, descricao}]`): `BLOQUEADO` se o diário não cobre o último pregão, houver violação de liquidez, drawdown no limite da regra ou diário já bloqueado. Só SELECT. |
+| `GET` | `/operacional/tickers` | `OperacionalV2Controller.tickers` | `200` com `OperacionalV2DTO.Tickers` | Cards enriquecidos da Operabilidade V2, paginados e filtráveis por `status`, `liquidez`, `setor`, `sinal`, `confianca`, `posicao` e `evento`. Sem as tabelas V2, `200` com lista vazia e aviso. |
+| `GET` | `/operacional/tickers/{simbolo}` | `OperacionalV2Controller.ticker` | `200` com `OperacionalV2DTO.TickerDetalhe` | Snapshot completo do ticker, incluindo payload bruto, consenso e tese quando materializados. Só SELECT. |
+| `GET` | `/operacional/tickers/{simbolo}/consenso` | `OperacionalV2Controller.consenso` | `200` com `OperacionalV2DTO.Consenso` | Bloco de consenso entre regra, técnico, IA e operação. Se o snapshot existe sem o bloco, responde com aviso. |
+| `GET` | `/operacional/tickers/{simbolo}/tese` | `OperacionalV2Controller.tese` | `200` com `OperacionalV2DTO.Tese` | Tese explicada do ticker, com positivos, negativos, riscos e invalidadores quando o produtor materializar esses campos. |
+| `GET` | `/operacional/tickers/{simbolo}/timeline` | `OperacionalV2Controller.timeline` | `200` com `OperacionalV2DTO.Timeline` | Timeline V2 com filtros `tipo`, `severidade`, `inicio`, `fim` e `limite`; tolera a transição entre schemas `data_evento/tipo` e `data_pregao/tipo_evento`. |
+| `GET` | `/operacional/filtros` | `OperacionalV2Controller.filtros` | `200` com `OperacionalV2DTO.Filtros` | Contagens agregadas para montar chips no front sem varrer todos os cards no cliente. |
+| `GET` | `/operacional/alertas` | `OperacionalV2Controller.alertas` | `200` com `OperacionalV2DTO.Alertas` | Alertas UX derivados da timeline V2 por severidade/categoria, sem publicar evento nem gravar estado. |
 | `GET` | `/actuator` | Spring Boot Actuator | `200` com links dos endpoints expostos | Disponível conforme a exposição do perfil ativo. |
 | `GET` | `/actuator/health` | Spring Boot Actuator | `200` ou `503` com o estado de saúde | No perfil `dev`, inclui detalhes de saúde. |
 | `GET` | `/actuator/metrics` e `/actuator/metrics/{name}` | Spring Boot Actuator | `200` com nomes ou valores de métricas | Exposto no perfil `dev`. |
@@ -196,6 +203,15 @@ Leitura do sistema operável em **modo simulado** (paper trading). As tabelas `r
 - **Convenções:** campos em camelCase; R$ em decimal; frações (retornos, exposição, drawdown) em decimal, ex.: `0.0052` = 0,52%; drawdown é queda (≤ 0); ausente é `null`, nunca `0`. `excessoSobreCdiLiquido` usa o valor gravado e, se faltar, `retornoLiquidoAcumulado - cdiLiquidoIrAcumulado`.
 - **Limite de drawdown:** opcional em `parametros_json` (`trava.drawdown_maximo` ou `risco.drawdown_maximo`). A regra inicial não o define; então o drawdown não bloqueia o status e `/operacional/saude` avisa isso.
 - **Testes:** `ServicoOperacionalTest`, `RepositorioOperacionalTest` e `OperacionalControllerTest`; este último chama cada GET 5 vezes sobre um `NamedParameterJdbcTemplate` simulado e confere que só houve `query` com SELECT.
+
+### `GET /operacional/*` (Operabilidade V2, OPRV2-GES-1 a 6)
+
+Leitura dos snapshots e eventos enriquecidos para cockpit por ticker. As tabelas `ticker_operacional_snapshot` e `ticker_operacional_timeline` são de propriedade da infra/Flyway e alimentadas pelo `gerar-insights`; o gestor apenas expõe HTTP para o painel.
+
+- **Sem tabelas V2 ou sem carga:** as rotas respondem `200`, estrutura vazia e `avisos[]`, sem `500`.
+- **Transição de schema:** o repositório aceita a migration V25 inicial (`status_sistema`, `data_pregao`, `tipo_evento`) e o produtor enriquecido (`status_operacional`, `data_evento`, `tipo`), derivando campos do `payload_json` quando a coluna ainda não existe.
+- **Filtros:** cards aceitam `status`, `liquidez`, `setor`, `sinal`, `confianca`, `posicao`, `evento`, `pagina` e `tamanho`; timeline aceita `tipo`, `severidade`, `inicio`, `fim` e `limite`.
+- **Testes:** `OperacionalV2ControllerTest` cobre contratos principais, parâmetros inválidos, ausência das tabelas V2 e controller apenas com `GET`.
 
 ### `GET /api/v2/stocks/historical`
 
@@ -366,21 +382,21 @@ Erros tratados usam o formato:
 ### Observabilidade
 
 - Actuator/Micrometer expõe, no perfil `dev`, `/actuator/health`, `/actuator/metrics` e `/actuator/prometheus`.
-- O Logback escreve no console, em `/app/logs/application.log` e tenta enviar logs para `logstash:5000` via TCP.
+- Fora do perfil `docker`, o Logback escreve no console e em `/app/logs/application.log`; no perfil `docker`, escreve no console e envia logs para `logstash:5000` via TCP.
 - `prometheus.yml` aponta o scraping de métricas; `logstash.conf` define o pipeline local de logs.
 
 ### CI/CD e imagem
 
 - Pushes em branches `feature**` disparam a criação automática de PR para `develop`.
 - Push em `develop` constrói e publica a imagem no Docker Hub.
-- O Dockerfile compila para Java 21 usando uma imagem Maven/Temurin 24 e executa em Temurin 24.
-- A imagem define `SPRING_PROFILES_ACTIVE=docker`, mas o repositório não contém `application-docker.properties`. Ao executar a imagem, forneça um perfil existente e todas as propriedades necessárias.
+- O Dockerfile compila com Maven/Temurin 21, executa `mvn verify` e usa Temurin JRE 21 na imagem final, com usuário não-root.
+- A imagem define `SPRING_PROFILES_ACTIVE=docker`; `application-docker.properties` aplica os ajustes do container. Para execução direta, informe `DB_URL`, `DB_USERNAME` e `DB_PASSWORD`; configure também o acesso SQS e a rede para as dependências externas.
 
 ## Configuração
 
 | Variável | Padrão `dev` | Uso efetivo |
 | --- | --- | --- |
-| `SPRING_PROFILES_ACTIVE` | `dev` quando informado externamente | Seleciona o arquivo de configuração. `application.properties` está vazio. |
+| `SPRING_PROFILES_ACTIVE` | `dev` quando informado externamente | Seleciona configurações compartilhadas e overrides de perfil; use também `debug` para habilitar SQL detalhado. |
 | `SERVER_PORT` | `9090` | Porta HTTP. |
 | `BRAPI_API_KEY` | Sem padrão | Header `Authorization` da BRAPI. |
 | `DB_URL` | `jdbc:mysql://mysql:3306/minha_base?...` | Conexão MySQL. |
@@ -407,7 +423,7 @@ AWS_SQS_QUEUE_URL=http://localhost:4566/000000000000/tratar-ativos
 AWS_SQS_HISTORICAL_SERIES_QUEUE_URL=http://localhost:4566/000000000000/sqs-registrar-series-historicas
 ```
 
-Não versione chaves ou senhas. O perfil `test` contém atualmente um valor padrão para `BRAPI_API_KEY`; remova-o e revogue a chave antes de usar o repositório fora de um ambiente controlado.
+Não versione chaves ou senhas. Os perfis `dev`, `test` e `docker` leem `BRAPI_API_KEY` do ambiente e não têm valor real padrão. `run-local.env` é um arquivo local ignorado pelo Git. Uma chave removida dos arquivos atuais ainda pode existir no histórico Git; se ela era real, faça a revogação/rotação no provedor antes de reutilizá-la.
 
 ## Build e execução
 

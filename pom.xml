@@ -20,7 +20,6 @@
 
     <properties>
         <java.version>21</java.version>
-        <mapstruct.version>1.6.3</mapstruct.version>
     </properties>
 
     <dependencies>
@@ -30,13 +29,7 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- WebFlux (WebClient) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
-        </dependency>
-
-        <!-- Web MVC -->
+        <!-- HTTP API: implementação síncrona baseada em Spring MVC/RestTemplate. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -71,11 +64,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Feign Client -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-openfeign</artifactId>
-        </dependency>
         <!-- Micrometer - Prometheus metrics -->
         <dependency>
             <groupId>io.micrometer</groupId>
@@ -116,24 +104,7 @@
             <version>3.1.1</version>
         </dependency>
 
-        <!-- Jackson Kotlin Module (Fix for Spring Boot 3 / Hibernate conflict) -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.module</groupId>
-            <artifactId>jackson-module-kotlin</artifactId>
-        </dependency>
     </dependencies>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-dependencies</artifactId>
-                <version>2023.0.1</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
 
     <build>
 
@@ -144,13 +115,14 @@
                 <includes>
                     <include>**/*.properties</include>
                     <include>**/*.yml</include>
+                    <include>**/*.xml</include>
                 </includes>
                 <filtering>false</filtering>
             </resource>
         </resources>
 
         <plugins>
-            <!-- Compiler Plugin com annotation processor para MapStruct -->
+            <!-- Compiler Plugin com annotation processor para Lombok -->
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
@@ -158,11 +130,6 @@
                     <source>${java.version}</source>
                     <target>${java.version}</target>
                     <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.mapstruct</groupId>
-                            <artifactId>mapstruct-processor</artifactId>
-                            <version>${mapstruct.version}</version>
-                        </path>
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
