@@ -54,6 +54,11 @@ WebFlux e OpenFeign estão declarados no `pom.xml`, mas não são usados pela im
 | `GET` | `/analises/{simbolo}/fundamentos` | `AnaliseAcaoController.buscarFundamentos` | `200` com `FundamentosAtivoDTO` | Devolve o `detalhes_json` bruto do ciclo mais recente (sem consolidar/mediar) — os números exatos de valuation Graham, classificações e contexto técnico daquela análise, mais o perfil de operação (day trade / swing-reversão / longo prazo, não exclusivos) e os riscos de comprar/vender agora, calculados por `PerfilOperacaoClassificador`. |
 | `GET` | `/analises/{simbolo}/fundamentos-cvm` | `AnaliseAcaoController.buscarFundamentosCvm` | `200` com `FundamentosCvmDTO` | Le `indicador_fundamentalista` (escrita pelo ETL `etl-fundamentos-cvm` a partir dos dados abertos da CVM) e deriva `P/L` e `P/VP` na hora, cruzando `lpa`/`vpa` com a cotacao mais recente de `historico_acoes`. Simbolo sem carga devolve `200` com campos nulos. Metrica nula pode ser deliberada: `cobertura_json` diz por que. |
 | `GET` | `/api/v2/stocks/historical` | `HistoricoAcoesController.buscarHistorico` | `200` com `RespostaHistoricoAcoesDTO` | Proxy autenticado para o histórico da BRAPI; não publica em SQS. |
+| `GET` | `/operacional/resumo` | `OperacionalController.resumo` | `200` com `OperacionalDTO.Resumo` | Leitura pura (plano OPR, modo simulado), no formato CTR-OPR-PAI do painel: `statusSistema`, `motivosStatus [{codigo, descricao}]`, `dataInicio`, `ultimoPregao`, `pregoesAvaliados`, `pregoesMinimos`, retorno líquido, CDI, excesso, drawdown e `impostoEstimadoMes` do diário da regra em uso. Sem as tabelas da V23, `200` com `NAO_OPERAVEL` e aviso. |
+| `GET` | `/operacional/diario` | `OperacionalController.diario` | `200` com `OperacionalDTO.Diario` | Série diária (`itens`) da regra em uso, em ordem cronológica (`inicio` e `fim` opcionais, até 500 dias). Só SELECT. |
+| `GET` | `/operacional/operacoes` | `OperacionalController.operacoes` | `200` com `OperacionalDTO.Operacoes` | Operações simuladas (`itens`); filtros combináveis `status`, `simbolo`, `inicio`/`fim` (data da decisão de entrada), `motivo` (de saída) e `limite`. Só SELECT. |
+| `GET` | `/operacional/bloqueios` | `OperacionalController.bloqueios` | `200` com `OperacionalDTO.Bloqueios` | Sinais rejeitados por dado ou liquidez, de `evento_operacional`, agrupados por ativo: `itens [{simbolo, faixa, motivos [{codigo, descricao, detalhe, valor, limite}]}]` (`data`, `simbolo`, `motivo`, `limite`). Só SELECT. |
+| `GET` | `/operacional/saude` | `OperacionalController.saude` | `200` com `OperacionalDTO.Saude` | Prontidão para o painel e o alerta (`status`, `ultimaExecucao`, `dadosDoDiaCompletos`, `violacoes [{codigo, descricao}]`): `BLOQUEADO` se o diário não cobre o último pregão, houver violação de liquidez, drawdown no limite da regra ou diário já bloqueado. Só SELECT. |
 | `GET` | `/actuator` | Spring Boot Actuator | `200` com links dos endpoints expostos | Disponível conforme a exposição do perfil ativo. |
 | `GET` | `/actuator/health` | Spring Boot Actuator | `200` ou `503` com o estado de saúde | No perfil `dev`, inclui detalhes de saúde. |
 | `GET` | `/actuator/metrics` e `/actuator/metrics/{name}` | Spring Boot Actuator | `200` com nomes ou valores de métricas | Exposto no perfil `dev`. |
@@ -180,6 +185,17 @@ Regras aplicadas sobre todas as linhas encontradas, sem filtro temporal:
 - confiança: `min(quantidadeRegistros / 20, 1)`, entre 0 e 1.
 
 Quando não há registros, a rota continua respondendo `200`; `resumo` informa que não há análise e os demais campos são nulos. Falhas de leitura do banco também são convertidas pelo serviço em lista vazia e, portanto, têm a mesma resposta.
+
+### `GET /operacional/*` (plano OPR, OPR-GES-1 a 5)
+
+Leitura do sistema operável em **modo simulado** (paper trading). As tabelas `regra_operacional`, `operacao_simulada`, `diario_operacional` e `evento_operacional` (migration V23 da infra) são escritas só pelo `gerar-insights`; o gestor lê por JDBC (`RepositorioOperacional`, só SELECT) e nunca grava, coleta, opera nem publica mensagem. Nada aqui é ordem ou recomendação.
+
+- **Regra em uso:** a `ATIVA` mais recente; sem ela, a do diário mais recente; sem diário, a da última operação. `versaoRegra=OPR-AAAA.MM.DD-N` escolhe outra.
+- **Sem as tabelas ou sem dados:** `200` com a estrutura vazia e um aviso, nunca `500`. Parâmetro inválido (data, `status`, `motivo`, `simbolo`, `versaoRegra`) responde `400`.
+- **Contrato:** os nomes seguem o CTR-OPR-PAI (SPEC do painel, "Contrato /operacional/*"); campos extras (`modo`, `aviso`, `avisos`, `caixa`, `exposicao`, `violacoesDetalhe`...) não atrapalham a tela. `pregoesMinimos` é a trava da regra (ex.: 63), não o que falta.
+- **Convenções:** campos em camelCase; R$ em decimal; frações (retornos, exposição, drawdown) em decimal, ex.: `0.0052` = 0,52%; drawdown é queda (≤ 0); ausente é `null`, nunca `0`. `excessoSobreCdiLiquido` usa o valor gravado e, se faltar, `retornoLiquidoAcumulado - cdiLiquidoIrAcumulado`.
+- **Limite de drawdown:** opcional em `parametros_json` (`trava.drawdown_maximo` ou `risco.drawdown_maximo`). A regra inicial não o define; então o drawdown não bloqueia o status e `/operacional/saude` avisa isso.
+- **Testes:** `ServicoOperacionalTest`, `RepositorioOperacionalTest` e `OperacionalControllerTest`; este último chama cada GET 5 vezes sobre um `NamedParameterJdbcTemplate` simulado e confere que só houve `query` com SELECT.
 
 ### `GET /api/v2/stocks/historical`
 
