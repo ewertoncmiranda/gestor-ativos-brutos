@@ -31,9 +31,16 @@ public class OperacionalV2Controller {
                                             @RequestParam(required = false) String confianca,
                                             @RequestParam(required = false) String posicao,
                                             @RequestParam(required = false) String evento,
+                                            @RequestParam(required = false) String risco,
+                                            @RequestParam(required = false) String eventoRecente,
+                                            @RequestParam(required = false) String operacao,
+                                            @RequestParam(required = false) String bloqueio,
+                                            @RequestParam(required = false) String scoreNaoCalibrado,
+                                            @RequestParam(required = false) String evidencia,
                                             @RequestParam(required = false) Integer pagina,
                                             @RequestParam(required = false) Integer tamanho) {
-        return servico.tickers(status, liquidez, setor, sinal, confianca, posicao, evento, pagina, tamanho);
+        return servico.tickers(status, liquidez, setor, sinal, confianca, posicao, evento, risco,
+                eventoRecente, operacao, bloqueio, scoreNaoCalibrado, evidencia, pagina, tamanho);
     }
 
     @GetMapping("/tickers/{simbolo}")

@@ -48,7 +48,8 @@ public class ServicoOperacionalV2 {
     private final RepositorioOperacionalV2 repositorio;
 
     public Tickers tickers(String status, String liquidez, String setor, String sinal, String confianca,
-                           String posicao, String evento, Integer pagina, Integer tamanho) {
+                           String posicao, String evento, String risco, String eventoRecente, String operacao,
+                           String bloqueio, String scoreNaoCalibrado, String evidencia, Integer pagina, Integer tamanho) {
         int pag = pagina == null ? PAGINA_PADRAO : Math.max(0, pagina);
         int tam = tamanho == null ? TAMANHO_PADRAO : Math.max(1, Math.min(tamanho, RepositorioOperacionalV2.LIMITE_MAXIMO));
         List<Snapshot> filtrados = snapshotsAtuais().stream()
@@ -59,6 +60,12 @@ public class ServicoOperacionalV2 {
                 .filter(s -> igual(s.confiancaFaixa(), normalizarToken(confianca, "confianca")))
                 .filter(s -> igual(s.posicaoStatus(), normalizarToken(posicao, "posicao")))
                 .filter(s -> igual(s.ultimoEventoTipo(), normalizarToken(evento, "evento")))
+                .filter(s -> filtrarOperacao(s, operacao))
+                .filter(s -> filtrarBooleano(!motivosBloqueio(s.payload()).isEmpty(), bloqueio, "SIM", "NAO"))
+                .filter(s -> filtrarBooleano("NAO_CALIBRADA".equals(s.confiancaFaixa()), scoreNaoCalibrado, "SIM", "NAO"))
+                .filter(s -> filtrarBooleano(s.ultimoEventoTipo() != null, eventoRecente, "SIM", "NAO"))
+                .filter(s -> filtrarBooleano(!"NAO_CALIBRADA".equals(s.confiancaFaixa()), evidencia, "SUFICIENTE", "INSUFICIENTE"))
+                .filter(s -> filtrarRisco(s, risco))
                 .toList();
         int total = filtrados.size();
         List<TickerCard> itens = filtrados.stream().skip((long) pag * tam).limit(tam).map(this::card).toList();
@@ -104,17 +111,52 @@ public class ServicoOperacionalV2 {
         return new Filtros(OperacionalV2DTO.MODO, OperacionalV2DTO.AVISO,
                 opcoes(snapshots, Snapshot::statusOperacional),
                 opcoes(snapshots, Snapshot::faixaLiquidez),
+                opcoes(snapshots, Snapshot::faixaLiquidez),
                 opcoes(snapshots, Snapshot::setor),
                 opcoes(snapshots, Snapshot::sinalPrincipal),
                 opcoes(snapshots, Snapshot::confiancaFaixa),
                 opcoes(snapshots, Snapshot::posicaoStatus),
                 opcoes(snapshots, Snapshot::ultimoEventoTipo),
+                opcoesDerivadas(snapshots, ServicoOperacionalV2::risco),
+                opcoesDerivadas(snapshots, s -> motivosBloqueio(s.payload()).isEmpty() ? "NAO" : "SIM"),
+                opcoesDerivadas(snapshots, s -> s.ultimoEventoTipo() == null ? "NAO" : "SIM"),
+                opcoesDerivadas(snapshots, ServicoOperacionalV2::operacaoAtual),
+                opcoesDerivadas(snapshots, s -> "NAO_CALIBRADA".equals(s.confiancaFaixa()) ? "SIM" : "NAO"),
+                opcoesDerivadas(snapshots, s -> "NAO_CALIBRADA".equals(s.confiancaFaixa()) ? "INSUFICIENTE" : "SUFICIENTE"),
                 avisos);
     }
 
     public Alertas alertas(Integer limite) {
         int lim = limite == null ? TAMANHO_PADRAO : Math.max(1, Math.min(limite, RepositorioOperacionalV2.LIMITE_MAXIMO));
-        List<Alerta> itens = repositorio.alertas(lim).stream().map(this::alerta).toList();
+        List<Snapshot> atuais = snapshotsAtuais();
+        List<Alerta> todos = new ArrayList<>();
+        Snapshot estadoSistema = atuais.stream().filter(s -> "BLOQUEADO".equals(s.statusOperacional())).findFirst().orElse(null);
+        if (estadoSistema != null) {
+            todos.add(new Alerta("sistema:BLOQUEADO:" + estadoSistema.dataPregao(), true, "CRITICO", "SISTEMA",
+                    null, "Sistema operacional bloqueado", estadoSistema.dataPregao(), estadoSistema.atualizadoEm(),
+                    estadoSistema.payload()));
+        }
+        for (Snapshot snapshot : atuais) {
+            JsonNode motivos = snapshot.payload() == null ? null : snapshot.payload().path("motivosBloqueio");
+            if (motivos != null && motivos.isArray() && !motivos.isEmpty()) {
+                JsonNode primeiro = motivos.get(0);
+                String codigo = primeiro.path("codigo").asText("BLOQUEIO_OPERACIONAL");
+                boolean dado = codigo.contains("DADO") || codigo.contains("FUNDAMENTO");
+                todos.add(new Alerta(snapshot.simbolo() + ":" + codigo + ":" + snapshot.dataPregao(), true,
+                        dado ? "ATENCAO" : "CRITICO", dado ? "DADO" : "RISCO", snapshot.simbolo(),
+                        primeiro.path("descricao").asText(primeiro.path("detalhe").asText("Bloqueio operacional atual")),
+                        snapshot.dataPregao(), snapshot.atualizadoEm(), snapshot.payload()));
+            }
+            if ("ABERTA".equals(snapshot.posicaoStatus()) || "PENDENTE".equals(snapshot.posicaoStatus())) {
+                todos.add(new Alerta(snapshot.simbolo() + ":POSICAO_" + snapshot.posicaoStatus() + ":" + snapshot.dataPregao(),
+                        true, "INFO", "RISCO", snapshot.simbolo(),
+                        "Posição simulada " + snapshot.posicaoStatus().toLowerCase(Locale.ROOT), snapshot.dataPregao(),
+                        snapshot.atualizadoEm(), snapshot.payload()));
+            }
+        }
+        todos.sort(Comparator.comparingInt((Alerta a) -> pesoSeveridade(a.severidade())).reversed()
+                .thenComparing(Alerta::dataEvento, Comparator.nullsLast(Comparator.reverseOrder())));
+        List<Alerta> itens = todos.stream().limit(lim).toList();
         return new Alertas(OperacionalV2DTO.MODO, OperacionalV2DTO.AVISO, lim, itens.size(), itens,
                 itens.isEmpty() ? SEM_V2 : List.of());
     }
@@ -137,17 +179,60 @@ public class ServicoOperacionalV2 {
     private TickerCard card(Snapshot s) {
         return new TickerCard(s.simbolo(), s.dataPregao(), s.versaoRegra(), s.statusOperacional(),
                 s.faixaLiquidez(), s.setor(), s.sinalPrincipal(), s.sinalTecnico(), s.opiniaoIa(),
-                s.confiancaFaixa(), s.posicaoStatus(), s.ultimoEventoTipo(), s.atualizadoEm());
+                s.confiancaFaixa(), s.posicaoStatus(), s.ultimoEventoTipo(), motivosBloqueio(s.payload()), s.atualizadoEm());
+    }
+
+    private static List<JsonNode> motivosBloqueio(JsonNode payload) {
+        JsonNode motivos = payload == null ? null : payload.path("motivosBloqueio");
+        if (motivos == null || !motivos.isArray()) return List.of();
+        List<JsonNode> saida = new ArrayList<>();
+        motivos.forEach(saida::add);
+        return List.copyOf(saida);
+    }
+
+    private static boolean filtrarOperacao(Snapshot snapshot, String filtro) {
+        String valor = normalizarToken(filtro, "operacao");
+        if (valor == null) return true;
+        if ("SEM_OPERACAO".equals(valor)) return snapshot.posicaoStatus() == null;
+        if ("ABERTA".equals(valor)) return "ABERTA".equals(snapshot.posicaoStatus()) || "PENDENTE".equals(snapshot.posicaoStatus());
+        return igual(snapshot.posicaoStatus(), valor);
+    }
+
+    private static boolean filtrarBooleano(boolean condicao, String filtro, String valorPositivo) {
+        return filtrarBooleano(condicao, filtro, valorPositivo, null);
+    }
+
+    private static boolean filtrarBooleano(boolean condicao, String filtro, String valorPositivo,
+                                           String valorNegativo) {
+        String valor = normalizarToken(filtro, "filtro");
+        if (valor == null) return true;
+        if (valorPositivo.equals(valor)) return condicao;
+        if (valorNegativo != null && valorNegativo.equals(valor)) return !condicao;
+        return true;
+    }
+
+    private static boolean filtrarRisco(Snapshot snapshot, String filtro) {
+        String valor = normalizarToken(filtro, "risco");
+        if (valor == null) return true;
+        return risco(snapshot).equals(valor);
+    }
+
+    private static String risco(Snapshot snapshot) {
+        JsonNode riscos = snapshot.payload() == null ? null : snapshot.payload().path("tese").path("riscos");
+        String maior = "BAIXO";
+        if (riscos != null && riscos.isArray()) {
+            for (JsonNode risco : riscos) {
+                String severidade = risco.path("severidade").asText("");
+                if ("ALTA".equals(severidade)) { maior = "ALTO"; break; }
+                if ("MEDIA".equals(severidade)) maior = "MEDIO";
+            }
+        }
+        return maior;
     }
 
     private EventoTimeline evento(TimelineLinha e) {
         return new EventoTimeline(e.eventId(), e.simbolo(), e.dataEvento(), e.versaoRegra(), e.tipo(),
                 e.severidade(), e.titulo(), e.payload(), e.criadoEm());
-    }
-
-    private Alerta alerta(TimelineLinha e) {
-        return new Alerta(e.eventId(), e.severidade(), categoria(e), e.simbolo(), e.titulo(), e.dataEvento(),
-                e.criadoEm(), e.payload());
     }
 
     private static List<OpcaoFiltro> opcoes(List<Snapshot> snapshots, Function<Snapshot, String> extrator) {
@@ -156,19 +241,26 @@ public class ServicoOperacionalV2 {
                 .entrySet().stream().map(e -> new OpcaoFiltro(e.getKey(), e.getValue())).toList();
     }
 
-    private static String categoria(TimelineLinha e) {
-        JsonNode payload = e.payload();
-        if (payload != null) {
-            JsonNode categoria = payload.path("categoria");
-            if (categoria.isTextual() && !categoria.asText().isBlank()) {
-                return categoria.asText();
-            }
-        }
-        return e.tipo();
+    private static List<OpcaoFiltro> opcoesDerivadas(List<Snapshot> snapshots, Function<Snapshot, String> extrator) {
+        return opcoes(snapshots, extrator);
+    }
+
+    private static String operacaoAtual(Snapshot snapshot) {
+        if ("ABERTA".equals(snapshot.posicaoStatus()) || "PENDENTE".equals(snapshot.posicaoStatus())) return "ABERTA";
+        return "FECHADA".equals(snapshot.posicaoStatus()) ? "FECHADA" : "SEM_OPERACAO";
     }
 
     private static boolean igual(String valor, String filtro) {
         return filtro == null || (valor != null && valor.equalsIgnoreCase(filtro));
+    }
+
+    private static int pesoSeveridade(String severidade) {
+        return switch (severidade == null ? "" : severidade) {
+            case "CRITICO" -> 3;
+            case "ATENCAO" -> 2;
+            case "INFO" -> 1;
+            default -> 0;
+        };
     }
 
     private static String simbolo(String valor) {

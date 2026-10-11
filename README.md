@@ -40,7 +40,7 @@ Cliente HTTP
 | `exceptions` | Exceções da aplicação e contrato global de erro. |
 | `config` | Configuração do cliente SQS e propriedades. |
 
-WebFlux e OpenFeign estão declarados no `pom.xml`, mas não são usados pela implementação: as rotas são Spring MVC e a BRAPI é acessada com `RestTemplate`.
+O serviço usa Spring MVC e `RestTemplate`; WebFlux, OpenFeign, Jackson Kotlin e MapStruct foram removidos por não serem usados.
 
 ## Rotas HTTP e controllers
 
@@ -382,21 +382,21 @@ Erros tratados usam o formato:
 ### Observabilidade
 
 - Actuator/Micrometer expõe, no perfil `dev`, `/actuator/health`, `/actuator/metrics` e `/actuator/prometheus`.
-- O Logback escreve no console, em `/app/logs/application.log` e tenta enviar logs para `logstash:5000` via TCP.
+- Fora do perfil `docker`, o Logback escreve no console e em `/app/logs/application.log`; no perfil `docker`, escreve no console e envia logs para `logstash:5000` via TCP.
 - `prometheus.yml` aponta o scraping de métricas; `logstash.conf` define o pipeline local de logs.
 
 ### CI/CD e imagem
 
 - Pushes em branches `feature**` disparam a criação automática de PR para `develop`.
 - Push em `develop` constrói e publica a imagem no Docker Hub.
-- O Dockerfile compila para Java 21 usando uma imagem Maven/Temurin 24 e executa em Temurin 24.
-- A imagem define `SPRING_PROFILES_ACTIVE=docker`, mas o repositório não contém `application-docker.properties`. Ao executar a imagem, forneça um perfil existente e todas as propriedades necessárias.
+- O Dockerfile compila com Maven/Temurin 21, executa `mvn verify` e usa Temurin JRE 21 na imagem final, com usuário não-root.
+- A imagem define `SPRING_PROFILES_ACTIVE=docker`; `application-docker.properties` aplica os ajustes do container. Para execução direta, informe `DB_URL`, `DB_USERNAME` e `DB_PASSWORD`; configure também o acesso SQS e a rede para as dependências externas.
 
 ## Configuração
 
 | Variável | Padrão `dev` | Uso efetivo |
 | --- | --- | --- |
-| `SPRING_PROFILES_ACTIVE` | `dev` quando informado externamente | Seleciona o arquivo de configuração. `application.properties` está vazio. |
+| `SPRING_PROFILES_ACTIVE` | `dev` quando informado externamente | Seleciona configurações compartilhadas e overrides de perfil; use também `debug` para habilitar SQL detalhado. |
 | `SERVER_PORT` | `9090` | Porta HTTP. |
 | `BRAPI_API_KEY` | Sem padrão | Header `Authorization` da BRAPI. |
 | `DB_URL` | `jdbc:mysql://mysql:3306/minha_base?...` | Conexão MySQL. |
@@ -423,7 +423,7 @@ AWS_SQS_QUEUE_URL=http://localhost:4566/000000000000/tratar-ativos
 AWS_SQS_HISTORICAL_SERIES_QUEUE_URL=http://localhost:4566/000000000000/sqs-registrar-series-historicas
 ```
 
-Não versione chaves ou senhas. O perfil `test` contém atualmente um valor padrão para `BRAPI_API_KEY`; remova-o e revogue a chave antes de usar o repositório fora de um ambiente controlado.
+Não versione chaves ou senhas. Os perfis `dev`, `test` e `docker` leem `BRAPI_API_KEY` do ambiente e não têm valor real padrão. `run-local.env` é um arquivo local ignorado pelo Git. Uma chave removida dos arquivos atuais ainda pode existir no histórico Git; se ela era real, faça a revogação/rotação no provedor antes de reutilizá-la.
 
 ## Build e execução
 

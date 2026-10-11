@@ -20,14 +20,14 @@ public final class OperacionalV2DTO {
     }
 
     public record TickerCard(String simbolo, LocalDate dataPregao, String versaoRegra, String statusOperacional,
-                             String faixaLiquidez, String setor, String sinalPrincipal, String sinalTecnico,
+                             String faixaLiquidez, String setor, String sinalPrincipal, JsonNode sinalTecnico,
                              String opiniaoIa, String confiancaFaixa, String posicaoStatus,
-                             String ultimoEventoTipo, LocalDateTime atualizadoEm) {
+                             String ultimoEventoTipo, List<JsonNode> motivosBloqueio, LocalDateTime atualizadoEm) {
     }
 
     public record TickerDetalhe(String modo, String aviso, String simbolo, LocalDate dataPregao, String versaoRegra,
                                 String statusOperacional, String faixaLiquidez, String setor, String sinalPrincipal,
-                                String sinalTecnico, String opiniaoIa, String confiancaFaixa, String posicaoStatus,
+                                JsonNode sinalTecnico, String opiniaoIa, String confiancaFaixa, String posicaoStatus,
                                 String ultimoEventoTipo, JsonNode payload, JsonNode consenso, JsonNode tese,
                                 LocalDateTime atualizadoEm, List<String> avisos) {
     }
@@ -57,13 +57,16 @@ public final class OperacionalV2DTO {
     }
 
     public record Filtros(String modo, String aviso, List<OpcaoFiltro> statusOperacional,
-                          List<OpcaoFiltro> faixaLiquidez, List<OpcaoFiltro> setor,
+                          List<OpcaoFiltro> faixaLiquidez, List<OpcaoFiltro> liquidez, List<OpcaoFiltro> setor,
                           List<OpcaoFiltro> sinalPrincipal, List<OpcaoFiltro> confiancaFaixa,
                           List<OpcaoFiltro> posicaoStatus, List<OpcaoFiltro> ultimoEventoTipo,
+                          List<OpcaoFiltro> risco, List<OpcaoFiltro> bloqueio, List<OpcaoFiltro> eventoRecente,
+                          List<OpcaoFiltro> operacao, List<OpcaoFiltro> scoreNaoCalibrado,
+                          List<OpcaoFiltro> evidencia,
                           List<String> avisos) {
     }
 
-    public record Alerta(String id, String severidade, String categoria, String simbolo, String titulo,
+    public record Alerta(String id, boolean ativo, String severidade, String categoria, String simbolo, String titulo,
                          LocalDate dataEvento, LocalDateTime createdAt, JsonNode payload) {
     }
 

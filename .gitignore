@@ -25,6 +25,7 @@ logs/
 # Environment variables
 .env
 .env.local
+run-local.env
 
 
 # Terraform

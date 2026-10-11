@@ -19,6 +19,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -81,7 +83,9 @@ class OperacionalV2ControllerTest {
 
         mvc.perform(get("/operacional/alertas"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.itens[0].severidade").value("ATENCAO"));
+                .andExpect(jsonPath("$.itens[0].severidade").value("ATENCAO"))
+                .andExpect(jsonPath("$.itens[0].ativo").value(true));
+        verify(repo, never()).alertas(anyInt());
     }
 
     @Test
@@ -119,6 +123,23 @@ class OperacionalV2ControllerTest {
     }
 
     @Test
+    void alertasRepresentamEstadoAtualESemEventosHistoricosFechados() throws Exception {
+        var repo = mock(RepositorioOperacionalV2.class);
+        var snapshot = new Snapshot("PETR4", LocalDate.of(2026, 10, 9), V, "EM_OBSERVACAO",
+                "ALTA", "Energia", "COMPRA", null, null, "NAO_CALIBRADA", null,
+                null, JSON.readTree("{\"motivosBloqueio\":[]}"), null, null,
+                LocalDateTime.of(2026, 10, 9, 19, 30));
+        when(repo.snapshotsRecentes()).thenReturn(List.of(snapshot));
+        when(repo.alertas(anyInt())).thenReturn(List.of(new TimelineLinha("evt-antigo", "PETR4",
+                LocalDate.of(2026, 10, 1), V, "POSICAO_FECHADA", "ATENCAO", "Posição encerrada", null,
+                LocalDateTime.of(2026, 10, 1, 19, 0))));
+
+        mvc(repo).perform(get("/operacional/alertas"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.itens").isEmpty());
+    }
+
+    @Test
     void controllerV2SoTemRotasGet() {
         for (var metodo : OperacionalV2Controller.class.getDeclaredMethods()) {
             assertTrue(metodo.isAnnotationPresent(org.springframework.web.bind.annotation.GetMapping.class),
@@ -128,11 +149,11 @@ class OperacionalV2ControllerTest {
 
     private static RepositorioOperacionalV2 repoComDados() throws Exception {
         var repo = mock(RepositorioOperacionalV2.class);
-        var payload = JSON.readTree("{\"setor\":\"Energia\"}");
+        var payload = JSON.readTree("{\"setor\":\"Energia\",\"motivosBloqueio\":[{\"codigo\":\"SEM_FUNDAMENTO_VIGENTE\",\"descricao\":\"Fundamento ausente\"}]}");
         var consenso = JSON.readTree("{\"regraPrincipal\":\"COMPRA\",\"tecnico\":\"NEUTRO\"}");
         var tese = JSON.readTree("{\"positivos\":[\"Liquidez alta\"],\"riscos\":[\"Evento CVM\"]}");
         var snapshot = new Snapshot("PETR4", LocalDate.of(2026, 10, 9), V, "PAPER_TRADING_ELEGIVEL",
-                "ALTA", "Energia", "COMPRA", "NEUTRO", "POSITIVA", "ALTA", "ABERTA",
+                "ALTA", "Energia", "COMPRA", JSON.readTree("{\"momentum\":\"NEUTRO\"}"), "POSITIVA", "ALTA", "ABERTA",
                 "ALERTA", payload, consenso, tese, LocalDateTime.of(2026, 10, 9, 19, 30));
         when(repo.snapshotsRecentes()).thenReturn(List.of(snapshot));
         when(repo.snapshot("PETR4")).thenReturn(java.util.Optional.of(snapshot));

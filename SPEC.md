@@ -98,7 +98,7 @@ BRAPI `quote` → `AtivoBrapiDTO` → ModelMapper → `Ativo` → JSON → SQS `
 ## 3. Arquitetura técnica
 
 ### 3.1 Stack
-Java 21 (compilado com Maven em imagem Temurin 24), Spring Boot 3.3.0, Spring Web **e** WebFlux (os dois declarados), Spring Data JPA/Hibernate, MySQL Connector/J, AWS SDK v2 (SQS), ModelMapper 3.1.1, Lombok, Micrometer Prometheus, Logstash Logback Encoder, OpenFeign (declarado, não usado — o cliente BRAPI usa `RestTemplate`).
+Java 21 (build Maven/Temurin 21 e runtime Temurin JRE 21), Spring Boot 3.3.0, Spring Web MVC, Spring Data JPA/Hibernate, MySQL Connector/J, AWS SDK v2 (SQS), ModelMapper 3.1.1, Lombok, Micrometer Prometheus e Logstash Logback Encoder. As chamadas HTTP externas usam `RestTemplate`; não há código reativo nem clientes Feign.
 
 > Google GenAI SDK e AWS SDK S3 foram removidos (ver nota de 2026-09-25 na seção 2).
 
@@ -138,7 +138,7 @@ Java 21 (compilado com Maven em imagem Temurin 24), Spring Boot 3.3.0, Spring We
 | `brapi.api.key` | `BRAPI_API_KEY` | obrigatória | **valor real embutido** (`ISS-01`) |
 | `spring.jpa.hibernate.ddl-auto` | — | `update` (`ISS-05`) | `update` |
 
-`application.properties` está **vazio**; o `Dockerfile` define `SPRING_PROFILES_ACTIVE=docker`, mas não existe `application-docker.properties` (`ISS-11`).
+`application.properties` contém as configurações compartilhadas. O perfil `docker` tem overrides próprios em `application-docker.properties`; `debug` habilita SQL detalhado, sem poluir os perfis `dev`, `test` ou `docker`.
 
 ### 3.5 Tabela `ativo_monitorado` (carteira de monitoramento, 2026-09-25)
 
@@ -196,7 +196,7 @@ OBSOLETO — descrevia o prompt enviado ao Gemini (removido). O prompt pedia "ri
 | REQ-03 | Publicar série histórica em `sqs-registrar-series-historicas` (CTR-02) | IMPLEMENTADO — cadastro POST e coleta agendada; GET não publica |
 | REQ-04 | Gerar análise consolidada a partir dos insights por regras determinísticas | IMPLEMENTADO — enum canônico e compatibilidade com VENDA legada |
 | REQ-05 | Salvar, listar e baixar análises no S3 | IMPLEMENTADO (descontinuado) (2026-09-25) |
-| REQ-06 | Agendar coleta **recorrente** de uma carteira de ativos | IMPLEMENTADO (`TASK-20`, 2026-09-25 — cadastro persistido + reprocessamento a cada 30s; não há ainda restrição ao horário de pregão) |
+| REQ-06 | Agendar coleta **recorrente** de uma carteira de ativos | EM ANDAMENTO (`TASK-20`: cron intradiário em dias úteis, 10:05–17:35; favoritar pode coletar imediatamente fora da janela e não há calendário de feriados) |
 | REQ-07 | Ler apenas insights já persistidos, sem encadear publicação e leitura síncronas | IMPLEMENTADO — decisão determinística na consulta; geração Gemini descontinuada |
 | REQ-08 | Expor o retrato bruto (não mediado) de um único ciclo de análise, para transparência de metodologia | IMPLEMENTADO (2026-09-25, `GET /analises/{simbolo}/fundamentos`) |
 | REQ-09 | Expor fundamentos contábeis da CVM com múltiplos derivados do preço atual | IMPLEMENTADO (2026-09-26, `GET /analises/{simbolo}/fundamentos-cvm`); lê `indicador_fundamentalista` (`infra#CTR-06`), escrita pelo ETL `etl-fundamentos-cvm` |
@@ -217,13 +217,13 @@ Critérios de aceite de referência:
 
 | ID | Requisito | Status |
 |---|---|---|
-| NFR-01 | Nenhum segredo em arquivos versionados ou em imagens | PLANEJADO (`ISS-01`) |
+| NFR-01 | Nenhum segredo em arquivos versionados ou em imagens | EM ANDAMENTO (`ISS-01`; configurações atuais sem hardcode, histórico ainda requer tratamento; `run-local.env` staged para remoção do índice e ignorado localmente) |
 | NFR-02 | GET sem gravação nem publicação; eventos com chave estável | IMPLEMENTADO — fallbacks somente consultam BRAPI; inbox transacional no consumidor |
 | NFR-03 | Resiliência nas integrações (BRAPI, SQS) com backoff e timeouts | EM ANDAMENTO (`ISS-10`) |
 | NFR-04 | Schema com proprietário único; aplicação só valida | IMPLEMENTADO — Flyway na infraestrutura; validate em configuração base, dev, test e compose |
-| NFR-05 | Testes unitários e de integração reais no CI | PLANEJADO (`ISS-04`) |
+| NFR-05 | Testes unitários e de integração reais no CI | IMPLEMENTADO (`ISS-04`; executados no build da imagem) |
 | NFR-06 | Logs estruturados enviados ao ELK sem ruído nem duplicação | IMPLEMENTADO (2026-10-08: Logstash só no perfil docker; arquivo só fora do docker) |
-| NFR-07 | Imagem mínima (JRE), sem root, com perfil de configuração existente | PLANEJADO (`ISS-11`) |
+| NFR-07 | Imagem mínima (JRE), sem root, com perfil de configuração existente | IMPLEMENTADO (`ISS-11`; execução pendente) |
 
 ---
 
@@ -233,21 +233,21 @@ Critérios de aceite de referência:
 
 | ID | Sev. | Problema | Evidência | Impacto | Correção sugerida | Status |
 |---|---|---|---|---|---|---|
-| ISS-01 | **Crítico** | Chave real da BRAPI gravada como valor padrão (a chave do Gemini foi removida junto com a integração em 2026-09-25) | `src/main/resources/application-test.properties` (alteração ainda **não commitada**; o arquivo é versionado). A mesma chave está em `infra-b3-ecossytem/docker-compose-local.yml` (não versionado) | Um commit publica a chave no GitHub | Remover o padrão (`${BRAPI_API_KEY}` sem default), **revogar e gerar nova chave**, usar `.env` fora do git, adicionar secret scanning (gitleaks) no CI | PLANEJADO |
+| ISS-01 | **Crítico** | Não foi identificado valor real hardcoded nas configurações atuais; commits anteriores à remoção ainda podem conter o segredo | `src/main/resources/application-test.properties`, `application-dev.properties` e `application-docker.properties` referenciam `BRAPI_API_KEY` sem valor secreto hardcoded. O histórico registra `aa4241e Remove chave real da BRAPI do arquivo versionado`; `infra-b3-ecossytem/docker-compose-local.yml` está ignorado pelo Git e referencia a variável. `run-local.env` está staged para remoção do índice e ignorado; a cópia local permanece | Um segredo no histórico Git pode continuar exposto/reutilizável | Rotação e revogação dependem do usuário. Gitleaks em CI não foi adicionado para preservar os workflows, conforme instrução explícita | EM ANDAMENTO — configs atuais sem hardcode; histórico e rotação/revogação pendentes; gitleaks em CI adiado |
 | ISS-02 | Alto | A consolidação contava `"VENDA"`, mas o produtor emite a família `"VENDA_*"` | `ConsolidadorAnaliseAcao` agora agrupa recomendações pelo prefixo `VENDA` e ignora valores nulos | Percentual volta a representar os sinais de venda | Teste unitário cobre família e nulos | IMPLEMENTADO (2026-09-26) |
 | ISS-03 | Alto | Condição de corrida: publica no SQS e **lê `insight_acao` na sequência**, antes de o worker processar a mensagem | `service/ServicoAtivo.java` (`processar`, `processarRobusto`) | A análise da IA ignora o dado recém-coletado; na primeira coleta de um ativo não há análise | Separar os passos: a análise de IA roda em outro gatilho (evento "insight gerado" via SNS/SQS ou agendamento posterior) | PLANEJADO |
-| ISS-04 | Alto | Não há testes reais (o único teste é `assertTrue(true)`); o build usa `-DskipTests` | `src/test/.../GestorAtivosBrutosApplicationTests.java`, `Dockerfile` | Regressões passam direto | Testes unitários de consolidador/prompt/serviços e de integração com Testcontainers (MySQL + LocalStack) | PLANEJADO |
+| ISS-04 | Alto | Um teste vazio afirmava apenas `assertTrue(true)` e o Dockerfile pulava testes | `src/test`, `Dockerfile` | Regressões passam direto | Manter a suíte de testes existente e executar `mvn verify` no estágio de build da imagem | IMPLEMENTADO (2026-10-11; execução local pendente) |
 | ISS-05 | Alto | Propriedade de schema unificada | Flyway da infraestrutura; Hibernate validate; inicialização SQL desativada | Evita alteração de tabelas por ORM | IMPLEMENTADO |
 | ISS-06 | Médio | `ConfigSqs` ignora a configuração: credenciais fixas `"test"/"test"` e região fixa `SA_EAST_1` | `config/ConfigSqs.java` | Não funciona em AWS real | Região vem de property/env; credenciais estáticas só quando configuradas, senão usa `DefaultCredentialsProvider` | IMPLEMENTADO (2026-10-08) |
 | ISS-07 | Médio | `ConversorJson` usa `new ObjectMapper()` sem `JavaTimeModule`; `Ativo.regularMarketTime` é `LocalDateTime` e vem de uma String via ModelMapper | `tools/ConversorJson.java`, `external/Ativo.java` | O campo tende a chegar nulo, ou a serialização falha se for preenchido; o consumidor perde o timestamp da cotação, necessário para idempotência | Injetar o `ObjectMapper` do Spring; converter o epoch da BRAPI para `Instant`; teste de contrato | PLANEJADO (a verificar com teste) |
-| ISS-08 | Médio | ~~O agendador não é recorrente e a fila fica em memória~~ | `entrypoint/schedule/AgendadorAtivos.java` | ~~Perda de trabalho no restart; README incorreto~~ | Carteira persistida em `ativo_monitorado` + tick de 5s checando `intervalo_segundos` por ativo + deduplicação por `UNIQUE KEY` | IMPLEMENTADO (2026-09-25) — falta ainda restringir ao horário de pregão, ver `TASK-20` |
+| ISS-08 | Médio | ~~O agendador não é recorrente e a fila fica em memória~~ | `entrypoint/schedule/AgendadorAtivos.java` | ~~Perda de trabalho no restart; README incorreto~~ | Carteira persistida em `ativo_monitorado` + tick de 5s checando `intervalo_segundos` por ativo + deduplicação por `UNIQUE KEY` | IMPLEMENTADO (2026-09-25). Para a coleta intradiária dos favoritos, `AgendadorCacheAtivos` agenda ciclos de 10:05 a 17:35 em dias úteis; o favoritar ainda pode disparar coleta imediata fora dessa janela e não há calendário de feriados (`TASK-20`) |
 | ISS-09 | Médio | GETs de cotação, histórico e perfil gravavam ou publicavam no fallback | Fallbacks consultam sem persistência; cadastro POST e agendador mantêm escrita | Sem efeitos de negócio ao navegar | IMPLEMENTADO |
 | ISS-10 | Médio | Retentativas do SQS sem backoff; `RestTemplate` sem timeout; a espera de 4 s bloqueia a thread do scheduler | `AdaptadorFilaSqs.java`, `ClienteBrApi.java`, `AgendadorAtivos.java` | Tempestade de retentativas; threads presas | Backoff exponencial (Resilience4j/Spring Retry); timeouts de conexão e leitura; rate limiter | PLANEJADO |
-| ISS-11 | Médio | Dockerfile: JDK completo em runtime, root, perfil `docker` inexistente, `-DskipTests`, compila com Temurin 24 para alvo Java 21 | `Dockerfile` | Imagem pesada e insegura; sem o compose, a imagem sobe sem configuração | Runtime `eclipse-temurin:21-jre-alpine`, `USER` não-root, `application-docker.properties`, rodar os testes no build/CI | PLANEJADO |
+| ISS-11 | Médio | Dockerfile: JDK completo em runtime, root, perfil `docker` inexistente, testes ignorados e build Temurin 24 para alvo Java 21 | `Dockerfile` | Imagem pesada e insegura; sem o compose, a imagem sobe sem configuração | Runtime `eclipse-temurin:21-jre-alpine`, usuário não-root, `application-docker.properties` e testes no build da imagem | IMPLEMENTADO (2026-10-11; execução local pendente) |
 | ISS-12 | Médio | Logback envia sempre para `logstash:5000` e também grava em arquivo com padrão texto, que o Logstash lê com codec JSON | `src/main/resources/logback-spring.xml`, `infra-b3-ecossytem/logstash.conf` | Erros de conexão fora do Docker; parse falho e logs duplicados no Elasticsearch | Appender Logstash só no perfil docker; arquivo só fora do docker. O input de arquivo da infra fica para logs locais legados | IMPLEMENTADO (2026-10-08) |
 | ISS-13 | Baixo | Prompt pede "risco 0-100", mas o schema espera string; `variacaoMedia` é na verdade a margem média | `tools/MontadorPromptAnalise.java`, `ServicoGemini.java` | Saída da IA inconsistente | Alinhar prompt e schema; renomear para `margemSegurancaMedia` | PLANEJADO |
 | ISS-14 | Médio | 15 arquivos registrado no códigos (renomeação de controllers, série histórica, remoção de classes) | `git status` | Risco de perda; PR grande demais | Commitar em partes (refactor de nomes ≠ feature) **depois** de resolver `ISS-01` | PLANEJADO |
-| ISS-15 | Baixo | Dependências não usadas: WebFlux (junto com Web MVC), OpenFeign, `jackson-module-kotlin`; `mapstruct-processor` configurado sem MapStruct; `show-sql=true` | `pom.xml`, properties | Build e imagem maiores; logs verbosos | Limpar o `pom.xml`; `show-sql` só em debug | PLANEJADO |
+| ISS-15 | Baixo | Dependências não usadas: WebFlux, OpenFeign, `jackson-module-kotlin`; `mapstruct-processor` sem MapStruct; SQL detalhado ativo fora de debug | `pom.xml`, properties | Build e imagem maiores; logs verbosos | Remover dependências sem uso e habilitar `show-sql` apenas no perfil `debug` | IMPLEMENTADO (2026-10-11; build pendente) |
 | ISS-16 | OBSOLETO | ~~Chave S3 `{simbolo}/analises/{HH:mm:ss}.json` sem data; `:` em nome de arquivo~~ | — | S3 removido em 2026-09-25, análise não é mais persistida em arquivo | — | IMPLEMENTADO (remoção) |
 | ISS-17 | Baixo | Consolidação sem janela temporal e com NPE possível se `recomendacao` for nula (`groupingBy` não aceita chave nula) | `tools/ConsolidadorAnaliseAcao.java` | Sinais antigos dominam; erro 500 esporádico | Janela configurável (ex.: 90 dias); filtrar nulos | PLANEJADO |
 | ISS-18 | Alto | ~~`processarRobusto` (usado por `GET /ativos/robusto` e por todo cadastro em `ativo_monitorado`) pedia `range=1y` no histórico da BRAPI; o plano Free da BRAPI só libera `1d/5d/1mo/3mo` (`400 INVALID_RANGE`) para qualquer ticker fora da lista de demonstração deles (ex.: `PETR4`, `MGLU3` passavam mesmo sem chave; `WEGE3`, `RAIZ4` não)~~ | `service/ServicoAtivo.java` (achado em 2026-09-25 testando a aba Monitorados: `atualizado_em` nunca avançava pra tickers fora da lista demo) | Com chave BRAPI real configurada, o monitoramento recorrente falhava silenciosamente (retry a cada 5s sem nunca suceder) pra praticamente qualquer ativo cadastrado | `range` extraído para `${brapi.historico.range:3mo}` | IMPLEMENTADO (2026-09-25) |
@@ -265,11 +265,11 @@ Critérios de aceite de referência:
 
 | ID | Tarefa | Resolve | Critério de aceite | Status |
 |---|---|---|---|---|
-| TASK-01 | Remover chave BRAPI embutida, revogar e gerar nova chave, adicionar gitleaks ao CI (chave do Gemini já removida junto com a integração) | ISS-01, NFR-01 | `git grep -nE "BRAPI_API_KEY:[^}]"` sem resultado; pipeline falha se houver segredo | PLANEJADO |
+| TASK-01 | Fechar a trilha de segredo da BRAPI: revisar o histórico e os arquivos locais, orientar rotação da chave e avaliar secret scanning | ISS-01, NFR-01 | Configurações atuais sem valor hardcoded; `run-local.env` fora do índice; rotação/revogação da chave histórica pelo usuário. Secret scanning em CI permanece adiado | EM ANDAMENTO — configurações atuais sem hardcode; rotação/revogação depende do usuário; gitleaks em CI adiado para preservar workflows |
 | TASK-02 | Commitar as mudanças pendentes em commits separados | ISS-14 | `git status` limpo; PR com descrição | PLANEJADO |
 | TASK-03 | Corrigir a contagem de venda (usar a família `VENDA_*` de CTR-03) | ISS-02 | Teste do critério REQ-04 passa | IMPLEMENTADO (2026-09-26) |
-| TASK-04 | Testes reais + remover `-DskipTests`; job de teste no CI antes da publicação da imagem | ISS-04, NFR-05 | Cobertura ≥ 70% em `tools` e `service` | PLANEJADO |
-| TASK-05 | Dockerfile multi-stage com JRE 21, não-root, `application-docker.properties` | ISS-11, NFR-07 | `docker run` sem o compose sobe e responde em `/actuator/health` (com as dependências apontadas) | PLANEJADO |
+| TASK-04 | Manter a suíte de testes reais e executar `mvn verify` no estágio de build da imagem, sem bypass | ISS-04, NFR-05 | O build da imagem falha se compilação ou testes falharem; sem regra de cobertura mínima | IMPLEMENTADO (2026-10-11; execução pendente) |
+| TASK-05 | Dockerfile multi-stage com JRE 21, usuário não-root e `application-docker.properties` | ISS-11, NFR-07 | `docker run` sem o compose sobe e responde em `/actuator/health` (com as dependências apontadas) | IMPLEMENTADO (2026-10-11; execução pendente) |
 
 ### Fase 1 — Integração correta
 
@@ -286,11 +286,11 @@ Critérios de aceite de referência:
 
 | ID | Tarefa | Resolve | Critério de aceite | Depende de | Status |
 |---|---|---|---|---|---|
-| TASK-20 | Carteira persistida + coleta agendada por cron no horário do pregão | ISS-08, REQ-06 | Ativos da carteira coletados 1×/dia útil, sem duplicata | TASK-12 | EM ANDAMENTO (2026-09-25) — carteira persistida (`ativo_monitorado`) e reprocessamento recorrente a cada 30s implementados; falta restringir ao horário de pregão (hoje roda 24/7) |
+| TASK-20 | Carteira persistida + coleta intradiária agendada por cron em janela de pregão | ISS-08, REQ-06 | O cron coleta favoritos às :05 e :35, das 10h às 17h, de segunda a sexta; favoritar pode disparar coleta imediata fora da janela; não há calendário de feriados | TASK-12 | EM ANDAMENTO (2026-10-11) — `AgendadorCacheAtivos.CRON_INTRADIARIO` (`0 5,35 10-17 * * MON-FRI`, fuso `America/Sao_Paulo`) agenda 16 ciclos entre 10:05 e 17:35 em dias úteis. `AgendadorCacheAtivosTest.intradiario_tem_16_ciclos_de_10h05_a_17h35_so_em_dia_util` cobre os horários e fim de semana; não cobre feriados. A coleta imediata ao favoritar permanece fora do cron |
 | TASK-21 | Análise de IA disparada por evento "insight gerado" (SNS `transmitir-lote-dados` ou fila nova), não na sequência da publicação | ISS-03, REQ-07 | A análise usa o insight do dia | contrato novo no ecossistema | PLANEJADO |
 | TASK-22 | OBSOLETO — prompt/schema do Gemini removidos; disclaimer legal (`F2`) deve ser adicionado direto na resposta HTTP de `MontadorDecisaoDeterministica` | F2 | Resposta HTTP contém `aviso_legal` | TASK-03 | IMPLEMENTADO (2026-10-08) |
 | TASK-23 | OBSOLETO — S3 removido, sem chave a corrigir | ISS-16 | — | — | IMPLEMENTADO (remoção) |
-| TASK-24 | Limpeza do `pom.xml` | ISS-15 | Build verde; imagem menor | TASK-04 | PLANEJADO |
+| TASK-24 | Limpeza do `pom.xml` | ISS-15 | Dependências sem uso removidas; build verde | TASK-04 | IMPLEMENTADO (2026-10-11; build pendente) |
 | TASK-25 | API de comunicados oficiais da CVM: linha do tempo por ticker e newsletter semanal | REQ-11 | Critério REQ-11 passa; `ServicoComunicadosTest` verde | ETL `--comunicados` (etl#REQ-09) | IMPLEMENTADO (2026-09-26) |
 | TASK-26 | Tela de comunicados no painel (`#/comunicados`) consumindo `infra#CTR-10` | REQ-11 | Chips por ticker, linha do tempo, link "Abrir documento na CVM ↗" | TASK-25 | IMPLEMENTADO (2026-09-26, `painel#REQ-08`) |
 | TASK-UX-5 | Endpoint de listagem única de ativos para o painel (`GET /painel/ativos`) com preço, variação, sparkline, sinal, último comunicado, favorito, setor e selos | REQ-14, `painel#TASK-UX-5` | Resposta paginada entrega a linha inteira em duas leituras por página; GET sem efeito colateral; teste de serviço cobre variação, sinal/comunicado ausentes, defasagem e limite de tamanho | — | IMPLEMENTADO (2026-10-07) |
@@ -303,8 +303,8 @@ Critérios de aceite de referência:
 | ID | Pergunta | Opções | Status |
 |---|---|---|---|
 | DEC-01 | Gatilho da análise de IA | síncrona no endpoint / evento pós-insight / agendada | PLANEJADO |
-| DEC-02 | Lista de ativos acompanhados | tabela no MySQL / configuração / endpoint de carteira | PLANEJADO |
-| DEC-03 | Manter WebFlux ou só Web MVC | MVC (recomendado; não há código reativo) / WebFlux | PLANEJADO |
+| DEC-02 | Lista de ativos acompanhados | IMPLEMENTADO (2026-09-25): tabela MySQL `ativo_monitorado` + endpoints de carteira (`POST /ativos/registrar/{ativo}`, `GET /ativos/registrados`); configuração avulsa não é a fonte da carteira |
+| DEC-03 | Manter WebFlux ou só Web MVC | Só Web MVC: endpoints são síncronos e não há código reativo | IMPLEMENTADO (2026-10-11) |
 | DEC-04 | Nome e contrato das recomendações | Enum gerado do JSON Schema canônico em infra/contracts | IMPLEMENTADO |
 
 ---
@@ -409,12 +409,12 @@ Expor dados prontos para uma experiência de ticker: cards enriquecidos, aba Ope
 
 | ID | Tarefa | Resolve | Critério de aceite | Depende de | Status |
 |---|---|---|---|---|---|
-| OPRV2-GES-1 | Expor `GET /operacional/tickers` e `GET /operacional/tickers/{simbolo}` lendo `ticker_operacional_snapshot` | cards enriquecidos | Paginação, filtros por status/liquidez/setor/sinal/confiança; sem tabela V2 responde vazio com aviso | infra#OPRV2-INFRA-2, gerar-insights#OPRV2-INS-1 | IMPLEMENTADO (2026-10-11): `OperacionalV2Controller`, `ServicoOperacionalV2` e `RepositorioOperacionalV2`; leitura tolera tabela ausente e transição de schema V25/produtor rico, derivando campos do `payload_json` quando necessário |
+| OPRV2-GES-1 | Expor `GET /operacional/tickers` e `GET /operacional/tickers/{simbolo}` lendo `ticker_operacional_snapshot` | cards enriquecidos | Paginação, filtros por status/liquidez/setor/sinal/confiança; sem tabela V2 responde vazio com aviso | infra#OPRV2-INFRA-2, gerar-insights#OPRV2-INS-1 | IMPLEMENTADO (2026-10-11): snapshots atuais deduplicados por ticker (sem corte interno de 5.000), filtros e paginação; cards incluem sinal técnico estruturado e motivos de bloqueio; schema anterior tolerado quando campos estão no payload |
 | OPRV2-GES-2 | Expor consenso e tese (`/consenso`, `/tese`) com DTOs estáveis em camelCase | explicabilidade | Sinal analítico e operabilidade aparecem separados; score não calibrado é explícito | gerar-insights#OPRV2-INS-2..3 | IMPLEMENTADO (2026-10-11): endpoints `/consenso` e `/tese` expõem os blocos materializados no snapshot; quando o snapshot existe sem esses blocos, respondem 200 com aviso |
 | OPRV2-GES-3 | Expor `/timeline` com filtros por tipo/severidade/data e limite | timeline do ticker | Timeline ordenada, idempotente, com links para comunicado/documento quando houver | gerar-insights#OPRV2-INS-4, etl#OPRV2-ETL-2 | IMPLEMENTADO (2026-10-11): endpoint lê `ticker_operacional_timeline`, filtra por tipo, severidade e janela, e suporta tanto `data_evento/tipo` quanto `data_pregao/tipo_evento` |
-| OPRV2-GES-4 | Expor `/filtros` com contagens agregadas: status operacional, liquidez, setor, risco, bloqueio, evento recente, operação aberta/fechada | filtros avançados | Painel monta chips sem varrer todos os tickers no cliente | OPRV2-GES-1 | IMPLEMENTADO (2026-10-11): `/operacional/filtros` agrega status, liquidez, setor, sinal, confiança, posição e último evento a partir dos snapshots atuais |
-| OPRV2-GES-5 | Expor `/alertas` com alertas UX ativos: sistema bloqueado, drawdown próximo, operação aberta/fechada, ticker deixou de ser elegível, dados incompletos | central de alertas | GET sem efeito colateral; alertas trazem severidade, categoria, ticker opcional e `createdAt` | infra#OPRV2-INFRA-4, OPR-GES-4 | IMPLEMENTADO (2026-10-11): `/operacional/alertas` lê timeline V2 por severidade/categoria, sem publicar evento nem gravar estado; padronização final de categorias ainda depende de infra#OPRV2-INFRA-4 |
-| OPRV2-GES-6 | Testes de contrato e não-regressão GET-only para todas as rotas V2 | NFR-02 | Chamar cada GET repetidamente não grava tabela nem publica mensagem; `./mvnw test` cobre ausência de tabelas V2 | OPRV2-GES-1..5 | IMPLEMENTADO (2026-10-11): `OperacionalV2ControllerTest` cobre contratos principais, parâmetros inválidos, ausência de V2 e garante controller apenas com GET; validação executada com `./mvnw.cmd "-Dnet.bytebuddy.experimental=true" "-Dtest=OperacionalV2ControllerTest" test` |
+| OPRV2-GES-4 | Expor `/filtros` com contagens agregadas: status operacional, liquidez, setor, risco, bloqueio, evento recente, operação aberta/fechada | filtros avançados | Painel monta chips sem varrer todos os tickers no cliente | OPRV2-GES-1 | IMPLEMENTADO (2026-10-11): contagens e opções derivadas dos snapshots atuais para status, liquidez, setor, sinal, confiança, posição, risco da tese, bloqueio, evento recente, operação e evidência |
+| OPRV2-GES-5 | Expor `/alertas` com alertas UX ativos derivados do estado atual: sistema bloqueado, posição pendente/aberta, ticker bloqueado e dados incompletos | central de alertas | GET sem efeito colateral; alertas trazem severidade, categoria, ticker opcional e `createdAt` | infra#OPRV2-INFRA-4, OPR-GES-4 | IMPLEMENTADO (2026-10-11): alertas são reconstruídos do último snapshot por ticker; eventos históricos e operações fechadas não são apresentados como ativos. Drawdown “próximo do limite” foi omitido enquanto não houver limiar formal configurado |
+| OPRV2-GES-6 | Testes de contrato e não-regressão GET-only para todas as rotas V2 | NFR-02 | Chamar cada GET repetidamente não grava tabela nem publica mensagem; testes cobrem ausência de tabelas V2 | OPRV2-GES-1..5 | IMPLEMENTADO NO CÓDIGO (2026-10-11): `OperacionalV2ControllerTest` cobre rotas, filtros, alertas derivados do estado atual, ausência de V2 e GET-only; testes Maven não executados conforme instrução do usuário, compilação principal concluída com JDK 26 |
 
 ### Dependências para o painel
 

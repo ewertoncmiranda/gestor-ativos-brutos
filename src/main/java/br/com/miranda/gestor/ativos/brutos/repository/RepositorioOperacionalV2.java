@@ -35,14 +35,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RepositorioOperacionalV2 {
 
     public static final int LIMITE_MAXIMO = 500;
-    private static final int LIMITE_INTERNO = 5000;
 
     private final NamedParameterJdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final Set<String> tabelasJaAvisadas = ConcurrentHashMap.newKeySet();
 
     public record Snapshot(String simbolo, LocalDate dataPregao, String versaoRegra, String statusOperacional,
-                           String faixaLiquidez, String setor, String sinalPrincipal, String sinalTecnico,
+                           String faixaLiquidez, String setor, String sinalPrincipal, JsonNode sinalTecnico,
                            String opiniaoIa, String confiancaFaixa, String posicaoStatus, String ultimoEventoTipo,
                            JsonNode payload, JsonNode consenso, JsonNode tese, LocalDateTime atualizadoEm) {
     }
@@ -54,8 +53,11 @@ public class RepositorioOperacionalV2 {
 
     public List<Snapshot> snapshotsRecentes() {
         return consultar("ticker_operacional_snapshot",
-                "SELECT * FROM ticker_operacional_snapshot ORDER BY data_pregao DESC, atualizado_em DESC LIMIT :n",
-                Map.of("n", LIMITE_INTERNO), snapshotMapper());
+                "WITH atuais AS (SELECT s.*, ROW_NUMBER() OVER (PARTITION BY simbolo "
+                        + "ORDER BY data_pregao DESC, atualizado_em DESC, id DESC) AS rn "
+                        + "FROM ticker_operacional_snapshot s) "
+                        + "SELECT * FROM atuais WHERE rn = 1 ORDER BY data_pregao DESC, simbolo",
+                Map.of(), snapshotMapper());
     }
 
     public Optional<Snapshot> snapshot(String simbolo) {
@@ -120,13 +122,14 @@ public class RepositorioOperacionalV2 {
             JsonNode consenso = colunas.contains("consenso_json") ? json(texto(rs, colunas, "consenso_json"))
                     : no(payload, "consenso");
             JsonNode tese = colunas.contains("tese_json") ? json(texto(rs, colunas, "tese_json")) : no(payload, "tese");
+            JsonNode tecnico = colunas.contains("sinal_tecnico") ? json(texto(rs, colunas, "sinal_tecnico"))
+                    : no(payload, "sinalTecnico");
             return new Snapshot(texto(rs, colunas, "simbolo"), data(rs, colunas, "data_pregao"),
                     texto(rs, colunas, "versao_regra"),
                     primeiroTexto(rs, colunas, payload, "status_operacional", "status_sistema", "statusOperacional"),
                     primeiroTexto(rs, colunas, payload, "faixa_liquidez", "faixaLiquidez"),
                     primeiroPayload(payload, "setor", "setorGrupo", "setor_grupo"),
-                    primeiroTexto(rs, colunas, payload, "sinal_principal", "sinalPrincipal"),
-                    primeiroTexto(rs, colunas, payload, "sinal_tecnico", "sinalTecnico"),
+                    primeiroTexto(rs, colunas, payload, "sinal_principal", "sinalPrincipal"), tecnico,
                     primeiroTexto(rs, colunas, payload, "opiniao_ia", "opiniaoIa"),
                     primeiroTexto(rs, colunas, payload, "confianca_faixa", "confiancaFaixa"),
                     primeiroTexto(rs, colunas, payload, "posicao_status", "posicaoStatus"),
