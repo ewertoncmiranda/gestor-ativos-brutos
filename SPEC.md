@@ -382,3 +382,48 @@ Plano completo e a migração única **V16** em `infra-b3-ecossytem/SPEC.md`, se
 - `./mvnw test` cobre os serviços OPR com fixtures de banco e sem depender de Docker real.
 - O painel consegue renderizar a aba Operabilidade com dados vazios, parciais e completos.
 - Nenhuma rota OPR inicia coleta, análise, operação ou mensagem; geração é responsabilidade do worker/agendamento.
+
+---
+
+## Plano OPERABILIDADE V2: APIs para cockpit operacional e ticker enriquecido (2026-10-11)
+
+**Status:** EM ANDAMENTO · **Contexto:** `infra-b3-ecossytem/SPEC.md`, Plano OPERABILIDADE V2. O gestor continua sendo camada de leitura: junta tabelas e contratos em HTTP para o painel, sem decidir operação nem publicar eventos.
+
+### Meta
+
+Expor dados prontos para uma experiência de ticker: cards enriquecidos, aba Operabilidade, consenso de sinais, tese explicada, timeline, filtros e alertas. Todas as rotas são `GET` e sem efeito colateral.
+
+### Rotas propostas
+
+| Rota | Uso |
+|---|---|
+| `GET /operacional/tickers` | lista paginada de cards enriquecidos por status, liquidez, setor, sinal, confiança, evento e bloqueio |
+| `GET /operacional/tickers/{simbolo}` | snapshot completo do ticker |
+| `GET /operacional/tickers/{simbolo}/consenso` | consenso entre regra principal, técnico, IA, v2/ranking e operacional |
+| `GET /operacional/tickers/{simbolo}/tese` | tese explicada, positivos/negativos/riscos/invalidadores |
+| `GET /operacional/tickers/{simbolo}/timeline` | eventos operacionais e de mercado em ordem |
+| `GET /operacional/filtros` | opções agregadas de filtros e contagens |
+| `GET /operacional/alertas` | alertas UX ativos para painel |
+
+### Tarefas desta aplicação
+
+| ID | Tarefa | Resolve | Critério de aceite | Depende de | Status |
+|---|---|---|---|---|---|
+| OPRV2-GES-1 | Expor `GET /operacional/tickers` e `GET /operacional/tickers/{simbolo}` lendo `ticker_operacional_snapshot` | cards enriquecidos | Paginação, filtros por status/liquidez/setor/sinal/confiança; sem tabela V2 responde vazio com aviso | infra#OPRV2-INFRA-2, gerar-insights#OPRV2-INS-1 | IMPLEMENTADO (2026-10-11): `OperacionalV2Controller`, `ServicoOperacionalV2` e `RepositorioOperacionalV2`; leitura tolera tabela ausente e transição de schema V25/produtor rico, derivando campos do `payload_json` quando necessário |
+| OPRV2-GES-2 | Expor consenso e tese (`/consenso`, `/tese`) com DTOs estáveis em camelCase | explicabilidade | Sinal analítico e operabilidade aparecem separados; score não calibrado é explícito | gerar-insights#OPRV2-INS-2..3 | IMPLEMENTADO (2026-10-11): endpoints `/consenso` e `/tese` expõem os blocos materializados no snapshot; quando o snapshot existe sem esses blocos, respondem 200 com aviso |
+| OPRV2-GES-3 | Expor `/timeline` com filtros por tipo/severidade/data e limite | timeline do ticker | Timeline ordenada, idempotente, com links para comunicado/documento quando houver | gerar-insights#OPRV2-INS-4, etl#OPRV2-ETL-2 | IMPLEMENTADO (2026-10-11): endpoint lê `ticker_operacional_timeline`, filtra por tipo, severidade e janela, e suporta tanto `data_evento/tipo` quanto `data_pregao/tipo_evento` |
+| OPRV2-GES-4 | Expor `/filtros` com contagens agregadas: status operacional, liquidez, setor, risco, bloqueio, evento recente, operação aberta/fechada | filtros avançados | Painel monta chips sem varrer todos os tickers no cliente | OPRV2-GES-1 | IMPLEMENTADO (2026-10-11): `/operacional/filtros` agrega status, liquidez, setor, sinal, confiança, posição e último evento a partir dos snapshots atuais |
+| OPRV2-GES-5 | Expor `/alertas` com alertas UX ativos: sistema bloqueado, drawdown próximo, operação aberta/fechada, ticker deixou de ser elegível, dados incompletos | central de alertas | GET sem efeito colateral; alertas trazem severidade, categoria, ticker opcional e `createdAt` | infra#OPRV2-INFRA-4, OPR-GES-4 | IMPLEMENTADO (2026-10-11): `/operacional/alertas` lê timeline V2 por severidade/categoria, sem publicar evento nem gravar estado; padronização final de categorias ainda depende de infra#OPRV2-INFRA-4 |
+| OPRV2-GES-6 | Testes de contrato e não-regressão GET-only para todas as rotas V2 | NFR-02 | Chamar cada GET repetidamente não grava tabela nem publica mensagem; `./mvnw test` cobre ausência de tabelas V2 | OPRV2-GES-1..5 | IMPLEMENTADO (2026-10-11): `OperacionalV2ControllerTest` cobre contratos principais, parâmetros inválidos, ausência de V2 e garante controller apenas com GET; validação executada com `./mvnw.cmd "-Dnet.bytebuddy.experimental=true" "-Dtest=OperacionalV2ControllerTest" test` |
+
+### Dependências para o painel
+
+| Tela/componente | API necessária |
+|---|---|
+| Cards enriquecidos | `GET /operacional/tickers` |
+| Aba Operabilidade do ticker | `GET /operacional/tickers/{simbolo}` + OPR v1 |
+| Consenso de sinais | `/consenso` |
+| “Por que esse sinal existe?” | `/tese` |
+| Timeline | `/timeline` |
+| Filtros globais | `/filtros` |
+| Central de alertas | `/alertas` |

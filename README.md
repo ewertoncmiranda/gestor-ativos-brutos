@@ -59,6 +59,13 @@ WebFlux e OpenFeign estão declarados no `pom.xml`, mas não são usados pela im
 | `GET` | `/operacional/operacoes` | `OperacionalController.operacoes` | `200` com `OperacionalDTO.Operacoes` | Operações simuladas (`itens`); filtros combináveis `status`, `simbolo`, `inicio`/`fim` (data da decisão de entrada), `motivo` (de saída) e `limite`. Só SELECT. |
 | `GET` | `/operacional/bloqueios` | `OperacionalController.bloqueios` | `200` com `OperacionalDTO.Bloqueios` | Sinais rejeitados por dado ou liquidez, de `evento_operacional`, agrupados por ativo: `itens [{simbolo, faixa, motivos [{codigo, descricao, detalhe, valor, limite}]}]` (`data`, `simbolo`, `motivo`, `limite`). Só SELECT. |
 | `GET` | `/operacional/saude` | `OperacionalController.saude` | `200` com `OperacionalDTO.Saude` | Prontidão para o painel e o alerta (`status`, `ultimaExecucao`, `dadosDoDiaCompletos`, `violacoes [{codigo, descricao}]`): `BLOQUEADO` se o diário não cobre o último pregão, houver violação de liquidez, drawdown no limite da regra ou diário já bloqueado. Só SELECT. |
+| `GET` | `/operacional/tickers` | `OperacionalV2Controller.tickers` | `200` com `OperacionalV2DTO.Tickers` | Cards enriquecidos da Operabilidade V2, paginados e filtráveis por `status`, `liquidez`, `setor`, `sinal`, `confianca`, `posicao` e `evento`. Sem as tabelas V2, `200` com lista vazia e aviso. |
+| `GET` | `/operacional/tickers/{simbolo}` | `OperacionalV2Controller.ticker` | `200` com `OperacionalV2DTO.TickerDetalhe` | Snapshot completo do ticker, incluindo payload bruto, consenso e tese quando materializados. Só SELECT. |
+| `GET` | `/operacional/tickers/{simbolo}/consenso` | `OperacionalV2Controller.consenso` | `200` com `OperacionalV2DTO.Consenso` | Bloco de consenso entre regra, técnico, IA e operação. Se o snapshot existe sem o bloco, responde com aviso. |
+| `GET` | `/operacional/tickers/{simbolo}/tese` | `OperacionalV2Controller.tese` | `200` com `OperacionalV2DTO.Tese` | Tese explicada do ticker, com positivos, negativos, riscos e invalidadores quando o produtor materializar esses campos. |
+| `GET` | `/operacional/tickers/{simbolo}/timeline` | `OperacionalV2Controller.timeline` | `200` com `OperacionalV2DTO.Timeline` | Timeline V2 com filtros `tipo`, `severidade`, `inicio`, `fim` e `limite`; tolera a transição entre schemas `data_evento/tipo` e `data_pregao/tipo_evento`. |
+| `GET` | `/operacional/filtros` | `OperacionalV2Controller.filtros` | `200` com `OperacionalV2DTO.Filtros` | Contagens agregadas para montar chips no front sem varrer todos os cards no cliente. |
+| `GET` | `/operacional/alertas` | `OperacionalV2Controller.alertas` | `200` com `OperacionalV2DTO.Alertas` | Alertas UX derivados da timeline V2 por severidade/categoria, sem publicar evento nem gravar estado. |
 | `GET` | `/actuator` | Spring Boot Actuator | `200` com links dos endpoints expostos | Disponível conforme a exposição do perfil ativo. |
 | `GET` | `/actuator/health` | Spring Boot Actuator | `200` ou `503` com o estado de saúde | No perfil `dev`, inclui detalhes de saúde. |
 | `GET` | `/actuator/metrics` e `/actuator/metrics/{name}` | Spring Boot Actuator | `200` com nomes ou valores de métricas | Exposto no perfil `dev`. |
@@ -196,6 +203,15 @@ Leitura do sistema operável em **modo simulado** (paper trading). As tabelas `r
 - **Convenções:** campos em camelCase; R$ em decimal; frações (retornos, exposição, drawdown) em decimal, ex.: `0.0052` = 0,52%; drawdown é queda (≤ 0); ausente é `null`, nunca `0`. `excessoSobreCdiLiquido` usa o valor gravado e, se faltar, `retornoLiquidoAcumulado - cdiLiquidoIrAcumulado`.
 - **Limite de drawdown:** opcional em `parametros_json` (`trava.drawdown_maximo` ou `risco.drawdown_maximo`). A regra inicial não o define; então o drawdown não bloqueia o status e `/operacional/saude` avisa isso.
 - **Testes:** `ServicoOperacionalTest`, `RepositorioOperacionalTest` e `OperacionalControllerTest`; este último chama cada GET 5 vezes sobre um `NamedParameterJdbcTemplate` simulado e confere que só houve `query` com SELECT.
+
+### `GET /operacional/*` (Operabilidade V2, OPRV2-GES-1 a 6)
+
+Leitura dos snapshots e eventos enriquecidos para cockpit por ticker. As tabelas `ticker_operacional_snapshot` e `ticker_operacional_timeline` são de propriedade da infra/Flyway e alimentadas pelo `gerar-insights`; o gestor apenas expõe HTTP para o painel.
+
+- **Sem tabelas V2 ou sem carga:** as rotas respondem `200`, estrutura vazia e `avisos[]`, sem `500`.
+- **Transição de schema:** o repositório aceita a migration V25 inicial (`status_sistema`, `data_pregao`, `tipo_evento`) e o produtor enriquecido (`status_operacional`, `data_evento`, `tipo`), derivando campos do `payload_json` quando a coluna ainda não existe.
+- **Filtros:** cards aceitam `status`, `liquidez`, `setor`, `sinal`, `confianca`, `posicao`, `evento`, `pagina` e `tamanho`; timeline aceita `tipo`, `severidade`, `inicio`, `fim` e `limite`.
+- **Testes:** `OperacionalV2ControllerTest` cobre contratos principais, parâmetros inválidos, ausência das tabelas V2 e controller apenas com `GET`.
 
 ### `GET /api/v2/stocks/historical`
 
