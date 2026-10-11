@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERVICO;
@@ -63,7 +64,8 @@ public class ServicoAtivoMonitorado {
     public AtivoMonitoradoEntity registrar(String codigoAtivo) {
         String simbolo = canonizar(codigoAtivo);
 
-        AtivoMonitoradoEntity entidade = repositorio.findBySimbolo(simbolo)
+        Optional<AtivoMonitoradoEntity> existente = repositorio.findBySimbolo(simbolo);
+        AtivoMonitoradoEntity entidade = existente
                 .orElseGet(() -> {
                     AtivoMonitoradoEntity nova = new AtivoMonitoradoEntity();
                     nova.setSimbolo(simbolo);
@@ -75,7 +77,8 @@ public class ServicoAtivoMonitorado {
                     return nova;
                 });
 
-        boolean jaEraFavorito = Boolean.TRUE.equals(entidade.getAtivo())
+        boolean jaEraFavorito = existente.isPresent()
+                && Boolean.TRUE.equals(entidade.getAtivo())
                 && entidade.getTipoColeta() == TipoColeta.COTACAO_E_HISTORICO;
         if (!jaEraFavorito && listarFavoritos().size() >= maxFavoritos) {
             throw new ExcecaoLimiteFavoritos(maxFavoritos);
