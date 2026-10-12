@@ -162,7 +162,7 @@ class SimuladorContratoTest {
         int chamadas;
         List<String> ultimasRespostas = new ArrayList<>();
 
-        FakeServicoIaComContagem() { super(null, null); }
+        FakeServicoIaComContagem() { super(null, null, null, null, null); }
 
         @Override
         public SimuladorIaAnaliseDTO analisarSimbolo(String simbolo) {

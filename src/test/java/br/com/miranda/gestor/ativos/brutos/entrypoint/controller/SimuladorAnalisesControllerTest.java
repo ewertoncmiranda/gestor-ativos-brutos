@@ -77,7 +77,7 @@ class SimuladorAnalisesControllerTest {
         int chamadas;
 
         FakeServicoIa(boolean emCache) {
-            super(null, null);
+            super(null, null, null, null, null);
             this.emCache = emCache;
         }
 
