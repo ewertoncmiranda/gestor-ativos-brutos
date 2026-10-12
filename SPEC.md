@@ -427,3 +427,39 @@ Expor dados prontos para uma experiência de ticker: cards enriquecidos, aba Ope
 | Timeline | `/timeline` |
 | Filtros globais | `/filtros` |
 | Central de alertas | `/alertas` |
+
+---
+
+## Plano OPT: APIs para cadeia de opções B3 confiável (2026-10-12)
+
+**Status:** PLANEJADO · **Contexto comum:** ver `infra-b3-ecossytem/SPEC.md`, Plano OPT. A rota atual `GET /ativos/{simbolo}/opcoes` funciona, mas consulta por prefixo (`LIKE 'XXXX%'`) sobre uma tabela contaminada. No diagnóstico local, `BVMF3/B3SA3` responderam `opcoes: []`, enquanto `opcao_b3_diaria` contém muitos instrumentos suspeitos sem vencimento real. O gestor deve expor leitura conservadora e explicar ausência, não inferir cadeia.
+
+### Regras para agentes
+
+- Gestor não corrige COTAHIST nem decide se uma opção é real; consome campos validados pelo ETL/infra.
+- Todas as rotas são `GET` e sem efeito colateral.
+- IDs `OPT-GES-*` são reservados; não renomear.
+- Enquanto `etl#OPT-ETL-2` e `infra#OPT-INFRA-1` não concluírem, a API deve retornar estado vazio/diagnóstico, não dado presumido.
+
+### Tarefas desta aplicação
+
+| ID | Tarefa | Resolve | Critério de aceite | Depende de | Status |
+|---|---|---|---|---|---|
+| OPT-GES-1 | Consultar opções por `ativo_objeto` e símbolo canônico, abandonando prefixo frágil `LIKE 'PETR%'` | cadeia correta por ativo | `/ativos/BVMF3/opcoes` normaliza para `B3SA3` quando houver identidade; `/ativos/{s}/opcoes` usa `ativo_objeto`; resposta informa `simboloSolicitado`, `simboloCanonico` e `aliasAplicado` | infra#OPT-INFRA-1, etl#OPT-ETL-2 | IMPLEMENTADO (2026-10-12): `OpcaoController` normaliza via `ativo_identidade`; `RepositorioOpcoes` consulta somente por `ativo_objeto` e bloqueia a leitura por prefixo quando a coluna ainda não existe |
+| OPT-GES-2 | Expor estado de qualidade na resposta de opções | UX clara | Resposta vazia diferencia `SEM_CADEIA_VALIDA`, `CARGA_OPCOES_AUSENTE`, `BASE_OPCOES_CONTAMINADA`, `TICKER_NORMALIZADO` e inclui `motivo` legível | OPT-GES-1 | IMPLEMENTADO (2026-10-12): contrato `RespostaOpcoesDTO` inclui `simboloSolicitado`, `simboloCanonico`, `aliasAplicado`, `status`, `motivo`, `vencimentos`, `opcoes`; teste `OpcaoControllerTest` cobre base sem `ativo_objeto`, carga ausente e ticker normalizado |
+| OPT-GES-3 | Criar endpoint de saúde da cadeia (`GET /opcoes/saude` ou equivalente) | diagnóstico e avaliação | Retorna totais obrigatórios do Plano OPT: válidos, inválidos, vencimento 9999, ativos monitorados com/sem cadeia, prefixos suspeitos e último pregão válido | infra#OPT-INFRA-3, etl#OPT-ETL-4 | IMPLEMENTADO NO CÓDIGO (2026-10-12): `GET /opcoes/saude` lê as views da infra, complementa contagens do cadastro monitorado, lista os 10 prefixos inválidos mais frequentes e responde `BASE_INDISPONIVEL` sem erro quando as migrations ainda não existem; compilação Maven validada com JDK 26, sem executar testes Maven conforme orientação do usuário |
+| OPT-GES-4 | Testes de contrato GET-only para opções | não-regressão | Chamadas repetidas não gravam tabela nem publicam mensagem; cobre ticker antigo, ticker sem cadeia e base sem colunas novas | OPT-GES-1..3 | PLANEJADO |
+
+### Contrato desejado para vazio explicável
+
+```json
+{
+  "simboloSolicitado": "BVMF3",
+  "simboloCanonico": "B3SA3",
+  "aliasAplicado": true,
+  "status": "SEM_CADEIA_VALIDA",
+  "motivo": "Nenhuma opção válida carregada para o ativo no último pregão.",
+  "vencimentos": [],
+  "opcoes": []
+}
+```

@@ -2,6 +2,7 @@ package br.com.miranda.gestor.ativos.brutos.entrypoint.controller;
 
 import br.com.miranda.gestor.ativos.brutos.external.dto.ComposicaoCapitalDTO;
 import br.com.miranda.gestor.ativos.brutos.external.dto.OpcaoB3DTO;
+import br.com.miranda.gestor.ativos.brutos.external.dto.RespostaOpcoesDTO;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioComposicaoCapital;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioIdentidadeAtivo;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioOpcoes;
@@ -15,9 +16,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.CONTROLADOR;
+import static br.com.miranda.gestor.ativos.brutos.external.dto.RespostaOpcoesDTO.StatusOpcoes.*;
 
 /**
  * Endpoints de composicao acionaria e cadeia de opcoes da B3.
@@ -48,16 +49,45 @@ public class OpcaoController {
     /**
      * Cadeia de opcoes do ativo subjacente no ultimo pregao disponivel.
      * {@code vencimento} opcional no formato YYYYMM.
-     * Devolve uma lista vazia quando o ativo nao tem opcoes.
+     * Quando a base ainda nao tem colunas confiaveis, devolve vazio explicado
+     * sem cair em inferencia fragil por prefixo.
      */
     @GetMapping("/{ativo}/opcoes")
-    public ResponseEntity<Map<String, Object>> opcoes(
+    public ResponseEntity<RespostaOpcoesDTO> opcoes(
             @PathVariable String ativo,
             @RequestParam(required = false) String vencimento) {
-        String simbolo = repositorioIdentidade.canonico(ativo.trim().toUpperCase());
-        log.info("{}-Opcoes | ativo={} vencimento={}", CONTROLADOR, simbolo, vencimento);
-        List<OpcaoB3DTO> dados = repositorioOpcoes.porAtivo(simbolo, vencimento);
-        List<String> vencimentos = repositorioOpcoes.vencimentos(simbolo);
-        return ResponseEntity.ok(Map.of("simbolo", simbolo, "vencimentos", vencimentos, "opcoes", dados));
+        String solicitado = ativo.trim().toUpperCase();
+        String canonico = repositorioIdentidade.canonico(solicitado);
+        boolean alias = !solicitado.equals(canonico);
+        log.info("{}-Opcoes | solicitado={} canonico={} vencimento={}", CONTROLADOR, solicitado, canonico, vencimento);
+
+        if (!repositorioOpcoes.tabelaDisponivel() || repositorioOpcoes.totalRegistros() == 0) {
+            return ResponseEntity.ok(resposta(solicitado, canonico, alias, CARGA_OPCOES_AUSENTE,
+                    "A carga de opções ainda não rodou ou não publicou dados válidos.", List.of(), List.of()));
+        }
+        if (!repositorioOpcoes.suportaAtivoObjeto()) {
+            return ResponseEntity.ok(resposta(solicitado, canonico, alias, BASE_OPCOES_CONTAMINADA,
+                    "A base de opções não possui vínculo confiável por ativo-objeto; consulta por prefixo foi bloqueada para evitar leitura enganosa.",
+                    List.of(), List.of()));
+        }
+
+        List<OpcaoB3DTO> dados = repositorioOpcoes.porAtivo(canonico, vencimento);
+        List<String> vencimentos = repositorioOpcoes.vencimentos(canonico);
+        if (dados.isEmpty()) {
+            return ResponseEntity.ok(resposta(solicitado, canonico, alias, SEM_CADEIA_VALIDA,
+                    alias
+                            ? "O ticker solicitado foi normalizado, mas não há cadeia de opções válida para o código canônico no último pregão."
+                            : "Não há cadeia de opções válida carregada para este ativo no último pregão.",
+                    vencimentos, dados));
+        }
+        return ResponseEntity.ok(resposta(solicitado, canonico, alias, alias ? TICKER_NORMALIZADO : OK,
+                alias ? "O ticker solicitado foi normalizado para o código atual antes da consulta." : "Cadeia de opções válida carregada.",
+                vencimentos, dados));
+    }
+
+    private static RespostaOpcoesDTO resposta(String solicitado, String canonico, boolean alias,
+                                              RespostaOpcoesDTO.StatusOpcoes status, String motivo,
+                                              List<String> vencimentos, List<OpcaoB3DTO> opcoes) {
+        return new RespostaOpcoesDTO(solicitado, canonico, alias, status, motivo, vencimentos, opcoes);
     }
 }
