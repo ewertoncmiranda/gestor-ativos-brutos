@@ -1,4 +1,4 @@
-# SPEC — gestor-ativos-brutos (Coletor e Orquestrador)
+﻿# SPEC — gestor-ativos-brutos (Coletor e Orquestrador)
 
 | Campo | Valor |
 |---|---|
@@ -448,7 +448,7 @@ Expor dados prontos para uma experiência de ticker: cards enriquecidos, aba Ope
 | OPT-GES-1 | Consultar opções por `ativo_objeto` e símbolo canônico, abandonando prefixo frágil `LIKE 'PETR%'` | cadeia correta por ativo | `/ativos/BVMF3/opcoes` normaliza para `B3SA3` quando houver identidade; `/ativos/{s}/opcoes` usa `ativo_objeto`; resposta informa `simboloSolicitado`, `simboloCanonico` e `aliasAplicado` | infra#OPT-INFRA-1, etl#OPT-ETL-2 | IMPLEMENTADO (2026-10-12): `OpcaoController` normaliza via `ativo_identidade`; `RepositorioOpcoes` consulta somente por `ativo_objeto` e bloqueia a leitura por prefixo quando a coluna ainda não existe |
 | OPT-GES-2 | Expor estado de qualidade na resposta de opções | UX clara | Resposta vazia diferencia `SEM_CADEIA_VALIDA`, `CARGA_OPCOES_AUSENTE`, `BASE_OPCOES_CONTAMINADA`, `TICKER_NORMALIZADO` e inclui `motivo` legível | OPT-GES-1 | IMPLEMENTADO (2026-10-12): contrato `RespostaOpcoesDTO` inclui `simboloSolicitado`, `simboloCanonico`, `aliasAplicado`, `status`, `motivo`, `vencimentos`, `opcoes`; teste `OpcaoControllerTest` cobre base sem `ativo_objeto`, carga ausente e ticker normalizado |
 | OPT-GES-3 | Criar endpoint de saúde da cadeia (`GET /opcoes/saude` ou equivalente) | diagnóstico e avaliação | Retorna totais obrigatórios do Plano OPT: válidos, inválidos, vencimento 9999, ativos monitorados com/sem cadeia, prefixos suspeitos e último pregão válido | infra#OPT-INFRA-3, etl#OPT-ETL-4 | IMPLEMENTADO NO CÓDIGO (2026-10-12): `GET /opcoes/saude` lê as views da infra, complementa contagens do cadastro monitorado, lista os 10 prefixos inválidos mais frequentes e responde `BASE_INDISPONIVEL` sem erro quando as migrations ainda não existem; compilação Maven validada com JDK 26, sem executar testes Maven conforme orientação do usuário |
-| OPT-GES-4 | Testes de contrato GET-only para opções | não-regressão | Chamadas repetidas não gravam tabela nem publicam mensagem; cobre ticker antigo, ticker sem cadeia e base sem colunas novas | OPT-GES-1..3 | PLANEJADO |
+| OPT-GES-4 | Testes de contrato GET-only para opções | não-regressão | Chamadas repetidas não gravam tabela nem publicam mensagem; cobre ticker antigo, ticker sem cadeia e base sem colunas novas | OPT-GES-1..3 | IMPLEMENTADO (Sessão 01, 2026-10-12): `OpcaoControllerTest` cobre baseSemAtivoObjeto (BVMF3→B3SA3, consultas=0), cargaAusente, cadeiaValida com alias, tickerSemCadeia sem inferência por prefixo e 5 chamadas repetidas sem gravação; `SaudeOpcoesControllerTest` cobre métricas obrigatórias e idempotência GET |
 
 ### Contrato desejado para vazio explicável
 
