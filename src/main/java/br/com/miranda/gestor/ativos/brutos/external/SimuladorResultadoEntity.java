@@ -30,7 +30,7 @@ public class SimuladorResultadoEntity {
     @Column(name = "versao_estrategia", length = 30, nullable = false)
     private String versaoEstrategia;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "INT")
     private Integer quintil = 1;
 
     @Column(name = "retorno_pct", precision = 12, scale = 8)
