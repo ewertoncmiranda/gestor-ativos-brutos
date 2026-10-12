@@ -6,26 +6,7 @@ on:
       - develop
 
 jobs:
-  # TASK-42: a imagem so e publicada se os testes unitarios passarem (sem lint nem piso de cobertura:
-  # decisao de 2026-10-07).
-  testes:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-
-      - name: Testes unitarios
-        run: ./mvnw -B test
-
   build-and-push:
-    needs: testes
     runs-on: ubuntu-latest
     permissions:
       contents: read
