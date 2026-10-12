@@ -7,7 +7,9 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface RepositorioSimuladorResultado extends JpaRepository<SimuladorResultadoEntity, Long> {
@@ -54,5 +56,45 @@ public interface RepositorioSimuladorResultado extends JpaRepository<SimuladorRe
     List<SimuladorResultadoEntity> findResultados(
             @Param("simbolo") String simbolo,
             @Param("dataPregao") LocalDate dataPregao);
+
+    @Query(value = """
+            SELECT r.* FROM simulador_resultado r
+            JOIN simulador_ativo a ON a.id = r.ativo_id
+            WHERE a.simbolo = :simbolo
+              AND r.data_pregao >= :inicio
+              AND (r.versao_estrategia = :versao
+                   OR r.versao_estrategia LIKE CONCAT(:estrategia, '%'))
+            ORDER BY r.data_pregao
+            """, nativeQuery = true)
+    List<SimuladorResultadoEntity> findHistoricoEstrategia(
+            @Param("simbolo") String simbolo,
+            @Param("estrategia") String estrategia,
+            @Param("versao") String versao,
+            @Param("inicio") LocalDate inicio);
+
+    @Query(value = """
+            SELECT fechamento FROM cotacao_b3_diaria
+            WHERE simbolo = :simbolo AND data_pregao = :data
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<BigDecimal> fechamentoEm(@Param("simbolo") String simbolo, @Param("data") LocalDate data);
+
+    @Query(value = """
+            SELECT data_pregao FROM cotacao_b3_diaria
+            WHERE simbolo = :simbolo AND data_pregao >= :data
+            ORDER BY data_pregao
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<LocalDate> primeiroPregaoEmOuApos(@Param("simbolo") String simbolo, @Param("data") LocalDate data);
+
+    @Query(value = """
+            SELECT data_pregao FROM cotacao_b3_diaria
+            WHERE simbolo = :simbolo AND data_pregao > :data
+            ORDER BY data_pregao
+            LIMIT :offset, 1
+            """, nativeQuery = true)
+    Optional<LocalDate> pregaoDepoisDe(@Param("simbolo") String simbolo,
+                                       @Param("data") LocalDate data,
+                                       @Param("offset") int offset);
 }
 

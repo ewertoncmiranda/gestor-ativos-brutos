@@ -1,14 +1,17 @@
 package br.com.miranda.gestor.ativos.brutos.service;
 
 import br.com.miranda.gestor.ativos.brutos.external.dto.SimuladorCenarioDTO;
-import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSimuladorResultado;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSimuladorAnalise;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 
 import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERVICO;
@@ -22,9 +25,7 @@ import static br.com.miranda.gestor.ativos.brutos.tools.ConstantesAplicacao.SERV
 @RequiredArgsConstructor
 public class ServicoSimuladorCenario {
 
-    private final RepositorioSimuladorResultado repositorioResultado;
-    // TODO: Adicionar repositório de COTAHIST para preços
-    // TODO: Adicionar repositório de índices para CDI
+    private final RepositorioSimuladorAnalise repositorio;
 
     /**
      * SIM-GES-7: Simula P&L de todas as 7 estratégias entre data_entrada e janela.
@@ -38,38 +39,74 @@ public class ServicoSimuladorCenario {
                                        Integer janelaPregoesApos, BigDecimal capitalInicial) {
         log.info("{} - Simulando cenário: {} de {} por {} pregões", SERVICO, simbolo, dataEntrada, janelaPregoesApos);
 
-        // TODO: Implementar:
-        // 1. Buscar preço em dataEntrada
-        // 2. Avançar janelaPregoesApos dias úteis → dataSaida
-        // 3. Buscar preço em dataSaida
-        // 4. Calcular P&L % e R$ para cada estratégia
-        // 5. Buscar CDI do período (via RepositorioIndiceMacro ou similar)
+        List<RepositorioSimuladorAnalise.Cotacao> cotacoes = repositorio.cotacoes(simbolo, dataEntrada);
+        RepositorioSimuladorAnalise.Cotacao entrada = cotacoes.isEmpty() ? null : cotacoes.get(0);
+        RepositorioSimuladorAnalise.Cotacao saida = cotacoes.size() > janelaPregoesApos
+                ? cotacoes.get(janelaPregoesApos) : null;
+        LocalDate dataEfetiva = entrada == null ? null : entrada.dataPregao();
+        List<RepositorioSimuladorAnalise.Sinal> sinais = dataEfetiva == null
+                ? List.of() : repositorio.sinaisNaData(simbolo, dataEfetiva);
 
-        Map<String, BigDecimal> retornoPorEstrategia = new HashMap<>();
-        Map<String, BigDecimal> reaisGanhoPerdaPorEstrategia = new HashMap<>();
-
-        // Stub: 7 estratégias vazias
-        for (String est : new String[]{"MOMENTO_PURO", "BAIXO_SPREAD", "REGRA_PRINCIPAL",
-                                        "RANKING_V2", "IA_MODELO", "LONGO_PRAZO", "ARBITRAGEM"}) {
-            retornoPorEstrategia.put(est, BigDecimal.ZERO);
-            reaisGanhoPerdaPorEstrategia.put(est, BigDecimal.ZERO);
+        Map<String, BigDecimal> retornoPorEstrategia = new LinkedHashMap<>();
+        Map<String, BigDecimal> reaisGanhoPerdaPorEstrategia = new LinkedHashMap<>();
+        BigDecimal retorno = retorno(entrada, saida);
+        if (retorno != null) {
+            for (var sinal : sinais) {
+                retornoPorEstrategia.put(sinal.versaoEstrategia(), retorno);
+                reaisGanhoPerdaPorEstrategia.put(sinal.versaoEstrategia(),
+                        capitalInicial.multiply(retorno).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+            }
         }
+
+        BigDecimal cdiPercentual = saida == null ? null : cdiComposto(
+                repositorio.cdi(entrada.dataPregao(), saida.dataPregao()),
+                cotacoes.subList(0, janelaPregoesApos + 1).stream().map(RepositorioSimuladorAnalise.Cotacao::dataPregao).toList());
+        BigDecimal cdiReais = cdiPercentual == null ? null : capitalInicial.multiply(cdiPercentual)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        var melhor = retornoPorEstrategia.entrySet().stream().max(Map.Entry.comparingByValue()).orElse(null);
+        var pior = retornoPorEstrategia.entrySet().stream().min(Map.Entry.comparingByValue()).orElse(null);
 
         return SimuladorCenarioDTO.builder()
                 .simbolo(simbolo)
-                .dataEntrada(dataEntrada)
-                .dataSaida(dataEntrada.plusDays(janelaPregoesApos))
+                .dataEntrada(dataEfetiva)
+                .dataSaida(saida == null ? null : saida.dataPregao())
                 .janelaPregoesApos(janelaPregoesApos)
                 .capitalInicial(capitalInicial)
                 .retornoPorEstrategia(retornoPorEstrategia)
                 .reaisGanhoPerdaPorEstrategia(reaisGanhoPerdaPorEstrategia)
-                .cdiPercentual(BigDecimal.ZERO)
-                .cdiReais(BigDecimal.ZERO)
-                .melhorEstrategia("—")
-                .melhorRetorno(BigDecimal.ZERO)
-                .piorEstrategia("—")
-                .piorRetorno(BigDecimal.ZERO)
+                .cdiPercentual(cdiPercentual)
+                .cdiReais(cdiReais)
+                .melhorEstrategia(melhor == null ? null : melhor.getKey())
+                .melhorRetorno(melhor == null ? null : melhor.getValue())
+                .piorEstrategia(pior == null ? null : pior.getKey())
+                .piorRetorno(pior == null ? null : pior.getValue())
                 .build();
+    }
+
+    private static BigDecimal retorno(RepositorioSimuladorAnalise.Cotacao entrada,
+            RepositorioSimuladorAnalise.Cotacao saida) {
+        if (entrada == null || saida == null || entrada.fechamento().signum() == 0) {
+            return null;
+        }
+        return saida.fechamento().divide(entrada.fechamento(), 12, RoundingMode.HALF_UP)
+                .subtract(BigDecimal.ONE).multiply(BigDecimal.valueOf(100)).setScale(4, RoundingMode.HALF_UP);
+    }
+
+    static BigDecimal cdiComposto(List<RepositorioSimuladorAnalise.PontoCdi> taxasDiarias,
+            List<LocalDate> pregoesEsperados) {
+        if (taxasDiarias == null || taxasDiarias.isEmpty() || pregoesEsperados == null || pregoesEsperados.isEmpty()) {
+            return null;
+        }
+        var datasDisponiveis = new HashSet<>(taxasDiarias.stream().map(RepositorioSimuladorAnalise.PontoCdi::data).toList());
+        if (!datasDisponiveis.containsAll(pregoesEsperados)) {
+            return null;
+        }
+        BigDecimal fator = BigDecimal.ONE;
+        for (var ponto : taxasDiarias) {
+            BigDecimal taxa = ponto.valor();
+            fator = fator.multiply(BigDecimal.ONE.add(taxa.divide(BigDecimal.valueOf(100), 16, RoundingMode.HALF_UP)));
+        }
+        return fator.subtract(BigDecimal.ONE).multiply(BigDecimal.valueOf(100)).setScale(4, RoundingMode.HALF_UP);
     }
 }
 
