@@ -37,8 +37,8 @@ class ServicoSimuladorIaTest {
         emCacheEntity.setAtivoId(1);
         emCacheEntity.setDataAnalise(LocalDateTime.now());
         emCacheEntity.setAnaliseTexto("analise cached");
-        emCacheEntity.setModeloIa("stub");
-        emCacheEntity.setTokensUsados(0);
+        emCacheEntity.setModeloIa("llama-real");
+        emCacheEntity.setTokensUsados(120);
         emCacheEntity.setAtivo(ativo);
 
         when(repositorio.findBySimboloAndDataAnalise("PETR4", LocalDate.now()))
@@ -48,29 +48,52 @@ class ServicoSimuladorIaTest {
 
         assertNotNull(resultado);
         assertEquals("PETR4", resultado.getSimbolo());
+        assertEquals("DISPONIVEL", resultado.getStatus());
+        assertNull(resultado.getErro());
         assertTrue(resultado.getEmCache());
         verify(repositorio).findBySimboloAndDataAnalise("PETR4", LocalDate.now());
         verify(repositorio, never()).save(any());
     }
 
     @Test
-    void analisar_simbolo_nao_em_cache_salva_nova() {
+    void analisar_simbolo_nao_em_cache_retorna_indisponivel_sem_salvar_stub() {
         var ativo = ativoFake("PETR4");
         when(repositorioAtivo.findBySimbolo("PETR4")).thenReturn(Optional.of(ativo));
         when(repositorio.findBySimboloAndDataAnalise("PETR4", LocalDate.now()))
                 .thenReturn(Optional.empty());
-        when(repositorio.save(any())).thenAnswer(i -> {
-            var op = (SimuladorIaAnaliseEntity) i.getArgument(0);
-            op.setId(1L);
-            op.setAtivo(ativo);
-            return op;
-        });
 
         var resultado = servico.analisarSimbolo("PETR4");
 
         assertNotNull(resultado);
         assertEquals("PETR4", resultado.getSimbolo());
         assertFalse(resultado.getEmCache());
-        verify(repositorio).save(any());
+        assertEquals("INDISPONIVEL", resultado.getStatus());
+        assertEquals("Integração insider-ia não configurada.", resultado.getErro());
+        assertNull(resultado.getAnaliseTexto());
+        assertNull(resultado.getModeloIa());
+        assertNull(resultado.getTokensUsados());
+        verify(repositorio, never()).save(any());
+    }
+
+    @Test
+    void analisar_simbolo_ignora_stub_legado_no_cache() {
+        var ativo = ativoFake("PETR4");
+        when(repositorioAtivo.findBySimbolo("PETR4")).thenReturn(Optional.of(ativo));
+
+        var stubLegado = new SimuladorIaAnaliseEntity();
+        stubLegado.setAtivoId(1);
+        stubLegado.setDataAnalise(LocalDateTime.now());
+        stubLegado.setAnaliseTexto("analise sintetica");
+        stubLegado.setModeloIa("stub");
+        stubLegado.setAtivo(ativo);
+        when(repositorio.findBySimboloAndDataAnalise("PETR4", LocalDate.now()))
+                .thenReturn(Optional.of(stubLegado));
+
+        var resultado = servico.analisarSimbolo("PETR4");
+
+        assertEquals("INDISPONIVEL", resultado.getStatus());
+        assertFalse(resultado.getEmCache());
+        assertNull(resultado.getAnaliseTexto());
+        verify(repositorio, never()).save(any());
     }
 }

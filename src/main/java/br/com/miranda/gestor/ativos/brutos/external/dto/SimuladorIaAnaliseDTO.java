@@ -10,7 +10,12 @@ import java.time.LocalDateTime;
 @Builder
 public class SimuladorIaAnaliseDTO {
 
+    public static final String STATUS_DISPONIVEL = "DISPONIVEL";
+    public static final String STATUS_INDISPONIVEL = "INDISPONIVEL";
+
     private String simbolo;
+    private String status;
+    private String erro;
     private String dadosEntradaJson;
     private String analiseTexto;
     private String modeloIa;
@@ -21,6 +26,7 @@ public class SimuladorIaAnaliseDTO {
     public static SimuladorIaAnaliseDTO de(SimuladorIaAnaliseEntity entidade, Boolean emCache) {
         return SimuladorIaAnaliseDTO.builder()
                 .simbolo(entidade.getAtivo() != null ? entidade.getAtivo().getSimbolo() : null)
+                .status(STATUS_DISPONIVEL)
                 .dadosEntradaJson(entidade.getDadosEntradaJson())
                 .analiseTexto(entidade.getAnaliseTexto())
                 .modeloIa(entidade.getModeloIa())
