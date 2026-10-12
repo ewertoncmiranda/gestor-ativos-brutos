@@ -4,6 +4,9 @@ import br.com.miranda.gestor.ativos.brutos.external.SimuladorAtivoEntity;
 import br.com.miranda.gestor.ativos.brutos.external.SimuladorOperacaoEntity;
 import br.com.miranda.gestor.ativos.brutos.external.SimuladorOperacaoDiarioEntity;
 import br.com.miranda.gestor.ativos.brutos.external.dto.SimuladorOperacaoDTO;
+import br.com.miranda.gestor.ativos.brutos.external.dto.SimuladorOperacaoHistoricoDTO;
+import br.com.miranda.gestor.ativos.brutos.external.dto.SimuladorOperacaoPontoDiarioDTO;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSimuladorAnalise;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSimuladorAtivo;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSimuladorOperacao;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSimuladorOperacaoDiario;
@@ -13,8 +16,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -28,6 +34,7 @@ public class ServicoSimuladorOperacao {
     private final RepositorioSimuladorOperacao repositorio;
     private final RepositorioSimuladorOperacaoDiario repositorioDiario;
     private final RepositorioSimuladorAtivo repositorioAtivo;
+    private final RepositorioSimuladorAnalise repositorioAnalise;
 
     /**
      * SIM-GES-3: Lista operações ativas (PENDENTE ou ABERTA).
@@ -124,6 +131,90 @@ public class ServicoSimuladorOperacao {
         });
 
         log.info("{} - Rotina matinal concluída", SERVICO);
+    }
+
+    /**
+     * SIM-GES-8: Histórico diário de P&L de uma operação calculado on-the-fly
+     * a partir de cotacao_b3_diaria e sinais de simulador_resultado.
+     */
+    public SimuladorOperacaoHistoricoDTO historicoOperacao(Long id) {
+        log.info("{} - Buscando histórico da operação: {}", SERVICO, id);
+
+        SimuladorOperacaoEntity op = repositorio.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Operação não encontrada: " + id));
+
+        String simbolo = repositorioAtivo.findById(op.getAtivoId())
+                .map(SimuladorAtivoEntity::getSimbolo)
+                .orElseThrow(() -> new IllegalArgumentException("Ativo não encontrado: " + op.getAtivoId()));
+
+        List<RepositorioSimuladorAnalise.Cotacao> cotacoes =
+                repositorioAnalise.cotacoes(simbolo, op.getDataEntrada());
+
+        if (cotacoes.isEmpty()) {
+            return SimuladorOperacaoHistoricoDTO.builder()
+                    .operacaoId(id).simbolo(simbolo).dataEntrada(op.getDataEntrada())
+                    .capital(op.getCapital()).precoEntrada(null)
+                    .totalRetornoPct(BigDecimal.ZERO).totalPnlRs(BigDecimal.ZERO)
+                    .pontos(List.of())
+                    .build();
+        }
+
+        List<RepositorioSimuladorAnalise.Sinal> sinais =
+                repositorioAnalise.sinais(simbolo, op.getDataEntrada());
+
+        Map<LocalDate, Map<String, Integer>> quintilPorData = sinais.stream()
+                .filter(s -> s.quintil() != null)
+                .collect(Collectors.groupingBy(
+                        RepositorioSimuladorAnalise.Sinal::dataPregao,
+                        Collectors.toMap(
+                                RepositorioSimuladorAnalise.Sinal::versaoEstrategia,
+                                RepositorioSimuladorAnalise.Sinal::quintil,
+                                (a, b) -> a)));
+
+        BigDecimal precoEntrada = cotacoes.get(0).fechamento();
+        BigDecimal capital = op.getCapital();
+        List<SimuladorOperacaoPontoDiarioDTO> pontos = new ArrayList<>();
+        BigDecimal precoAnterior = precoEntrada;
+
+        for (int i = 0; i < cotacoes.size(); i++) {
+            RepositorioSimuladorAnalise.Cotacao cot = cotacoes.get(i);
+            BigDecimal preco = cot.fechamento();
+
+            BigDecimal retornoDiaPct = i == 0
+                    ? BigDecimal.ZERO
+                    : preco.subtract(precoAnterior)
+                            .divide(precoAnterior, 6, RoundingMode.HALF_UP)
+                            .multiply(new BigDecimal("100"))
+                            .setScale(4, RoundingMode.HALF_UP);
+
+            BigDecimal retornoAcumPct = preco.subtract(precoEntrada)
+                    .divide(precoEntrada, 6, RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal("100"))
+                    .setScale(4, RoundingMode.HALF_UP);
+
+            BigDecimal pnlRs = capital.multiply(retornoAcumPct)
+                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+
+            pontos.add(SimuladorOperacaoPontoDiarioDTO.builder()
+                    .dataPregao(cot.dataPregao())
+                    .preco(preco)
+                    .retornoDiaPct(retornoDiaPct)
+                    .retornoAcumPct(retornoAcumPct)
+                    .pnlRs(pnlRs)
+                    .quintilPorEstrategia(quintilPorData.getOrDefault(cot.dataPregao(), Map.of()))
+                    .build());
+
+            precoAnterior = preco;
+        }
+
+        SimuladorOperacaoPontoDiarioDTO ultimo = pontos.get(pontos.size() - 1);
+        return SimuladorOperacaoHistoricoDTO.builder()
+                .operacaoId(id).simbolo(simbolo).dataEntrada(op.getDataEntrada())
+                .capital(capital).precoEntrada(precoEntrada)
+                .totalRetornoPct(ultimo.getRetornoAcumPct())
+                .totalPnlRs(ultimo.getPnlRs())
+                .pontos(pontos)
+                .build();
     }
 }
 

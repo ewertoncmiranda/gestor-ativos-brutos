@@ -103,7 +103,7 @@ class SimuladorContratoTest {
     static class FakeServicoOperacaoComContagem extends ServicoSimuladorOperacao {
         int criacoesChamadas;
 
-        FakeServicoOperacaoComContagem() { super(null, null, null); }
+        FakeServicoOperacaoComContagem() { super(null, null, null, null); }
 
         @Override
         public SimuladorOperacaoDTO criar(String simbolo, LocalDate dataEntrada,

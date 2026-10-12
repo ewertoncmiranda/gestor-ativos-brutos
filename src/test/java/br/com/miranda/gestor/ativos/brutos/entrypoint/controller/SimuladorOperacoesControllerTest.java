@@ -127,7 +127,7 @@ class SimuladorOperacoesControllerTest {
         int deletosChamados;
 
         FakeServicoOperacao(List<SimuladorOperacaoDTO> listagemRetorno, SimuladorOperacaoDTO criacaoRetorno) {
-            super(null, null, null);
+            super(null, null, null, null);
             this.listagemRetorno = listagemRetorno;
             this.criacaoRetorno = criacaoRetorno;
         }

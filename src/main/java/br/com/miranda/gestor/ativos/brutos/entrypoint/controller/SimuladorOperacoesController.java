@@ -74,6 +74,21 @@ public class SimuladorOperacoesController {
     }
 
     /**
+     * SIM-GES-8: GET /simulador/operacoes/{id}/historico
+     * Retorna P&L diário calculado on-the-fly a partir de cotacao_b3_diaria e sinais de estratégia.
+     */
+    @GetMapping("/operacoes/{id}/historico")
+    public ResponseEntity<SimuladorOperacaoHistoricoDTO> historicoOperacao(@PathVariable Long id) {
+        log.info("{} - Requisição para histórico da operação: {}", CONTROLADOR, id);
+        try {
+            return ResponseEntity.ok(servicoSimuladorOperacao.historicoOperacao(id));
+        } catch (IllegalArgumentException e) {
+            log.warn("{} - Operação não encontrada: {}", CONTROLADOR, e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
      * SIM-GES-3: DELETE /simulador/operacoes/{id}
      * Deleta uma operação (só se status=PENDENTE).
      */
