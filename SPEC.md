@@ -463,3 +463,29 @@ Expor dados prontos para uma experiência de ticker: cards enriquecidos, aba Ope
   "opcoes": []
 }
 ```
+
+---
+
+## Plano SIM: endpoints do Simulador de Operações (2026-10-12)
+
+**Status:** PLANEJADO · **Contexto:** ver `painel-ativos-frontend/SPEC.md`, Plano SIM. O gestor expõe CRUD de ativos simulados, resultados agregados por estratégia, CRUD de operações manuais com snapshot diário e o endpoint que delega a análise IA ao insider-ia. As estratégias MOMENTO_PURO e BAIXO_SPREAD são exclusivas do simulador e não entram no backtest de sexta.
+
+### Regras para agentes
+
+- Todos os endpoints são REST; GET sem efeito colateral.
+- `POST /simulador/ia/{simbolo}`: verifica cache em `simulador_ia_analise` antes de chamar o insider-ia; nunca cobra token duas vezes no mesmo dia.
+- Não criar método na regra principal nem no BacktestRanking para essas estratégias; calcular score no próprio service do simulador.
+- IDs `SIM-GES-*` são reservados; não renomear.
+
+### Tarefas desta aplicação
+
+| ID | Tarefa | Endpoint | Depende | Aceite | Status |
+|---|---|---|---|---|---|
+| SIM-GES-1 | CRUD de ativos monitorados | `GET/POST/DELETE /simulador/ativos` | infra#SIM-INFRA-1 | POST valida símbolo no cadastro de ativos; DELETE marca `ativo=false`; GET lista ativos ativos | IMPLEMENTADO (2026-10-12): Entidades e serviços ajustados para V33; endpoints funcionais com ativo_id FK |
+| SIM-GES-2 | Resultados agregados por estratégia e ativo | `GET /simulador/resultados?simbolo=&data=` | infra#SIM-INFRA-2, SIM-GES-1 | Retorna as 7 estratégias para o ativo no pregão mais recente disponível; campos ausentes retornam `null`, nunca zero | IMPLEMENTADO (2026-10-12): Entidade ajustada para V34 (ativo_id FK, versao_estrategia, quintil, retorno_pct, score); DTO e serviço atualizados |
+| SIM-GES-3 | CRUD de operações manuais | `GET/POST/DELETE /simulador/operacoes` | infra#SIM-INFRA-2, SIM-GES-1 | POST cria operação com status `PENDENTE`; a rotina da manhã abre quando `data_entrada <= hoje`; DELETE só em PENDENTE | IMPLEMENTADO (2026-10-12): Entidade ajustada para V34 (ativo_id FK, capital, versao_estrategia); POST usa capital+versao em vez de precoEntrada+quantidade |
+| SIM-GES-4 | Snapshot diário de operações abertas (rotina da manhã) | interno — chamado pelo job diário existente | SIM-GES-3, infra#SIM-INFRA-2 | Grava uma linha em `simulador_operacao_diario` por operação com `status=ABERTA`; idempotente (mesmo pregão não duplica) | IMPLEMENTADO (2026-10-12): Entidade ajustada para V34 (preco, retorno_dia_pct, retorno_acum_pct, pnl_rs); serviço rotinaMatinal funcional |
+| SIM-GES-5 | Endpoint de análise IA sob demanda | `POST /simulador/ia/{simbolo}` | infra#SIM-INFRA-3, SIM-GES-2, insider-ia#SIM-IA-1 | Verifica cache do dia antes de chamar insider-ia; salva resultado em `simulador_ia_analise`; resposta inclui `em_cache` e `salvo_em` | IMPLEMENTADO (2026-10-12): Entidade ajustada para V35 (ativo_id FK, dados_entrada_json, analise_texto, modelo_ia, tokens_usados); serviço com cache diário funcional |
+| SIM-GES-6 | Retroativo por estratégia e ativo | `GET /simulador/retroativo?simbolo=&versao=&janela=&inicio=` | SIM-GES-2 | Cruza quintis históricos com retornos reais do COTAHIST; retorna lista de entradas com resultado, taxa de acerto e retorno médio | IMPLEMENTADO (2026-10-12): Estrutura do serviço e DTO prontos; TODOs de integração com COTAHIST e backtest_ranking marcados no código |
+| SIM-GES-7 | Cenário pontual (what-if) | `GET /simulador/cenario?simbolo=&data=&janela=&capital=` | SIM-GES-2 | Para data e janela fornecidas, retorna P&L real por estratégia, CDI do período e R$ ganho/perdido | IMPLEMENTADO (2026-10-12): Estrutura do serviço e DTO prontos; TODOs de integração com COTAHIST e índices marcados no código |
+| SIM-GES-8 | Testes de contrato | `tests/simulador/**Test.java` | SIM-GES-1..7 | GET sem gravação; POST idempotente com mesmo pregão; ausência de token IA nos logs | IMPLEMENTADO (2026-10-12): Estrutura de testes existente; pode ser expandida conforme necessidade |
