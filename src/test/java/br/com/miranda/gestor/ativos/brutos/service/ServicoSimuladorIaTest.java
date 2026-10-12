@@ -1,24 +1,36 @@
 package br.com.miranda.gestor.ativos.brutos.service;
 
+import br.com.miranda.gestor.ativos.brutos.exceptions.ExcecaoInsiderIaIndisponivel;
 import br.com.miranda.gestor.ativos.brutos.external.SimuladorAtivoEntity;
 import br.com.miranda.gestor.ativos.brutos.external.SimuladorIaAnaliseEntity;
+import br.com.miranda.gestor.ativos.brutos.external.http.ClienteInsiderIa;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSimuladorAtivo;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSimuladorIaAnalise;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioSimuladorResultado;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class ServicoSimuladorIaTest {
 
     private final RepositorioSimuladorIaAnalise repositorio = mock(RepositorioSimuladorIaAnalise.class);
     private final RepositorioSimuladorAtivo repositorioAtivo = mock(RepositorioSimuladorAtivo.class);
-    private final ServicoSimuladorIa servico = new ServicoSimuladorIa(repositorio, repositorioAtivo);
+    private final RepositorioSimuladorResultado repositorioResultado = mock(RepositorioSimuladorResultado.class);
+    private final ClienteInsiderIa clienteInsiderIa = mock(ClienteInsiderIa.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private final ServicoSimuladorIa servico = new ServicoSimuladorIa(
+            repositorio, repositorioAtivo, repositorioResultado, clienteInsiderIa, objectMapper);
 
     private SimuladorAtivoEntity ativoFake(String simbolo) {
         SimuladorAtivoEntity a = new SimuladorAtivoEntity();
@@ -56,11 +68,14 @@ class ServicoSimuladorIaTest {
     }
 
     @Test
-    void analisar_simbolo_nao_em_cache_retorna_indisponivel_sem_salvar_stub() {
+    void analisar_simbolo_nao_em_cache_retorna_indisponivel_quando_insider_ia_offline() {
         var ativo = ativoFake("PETR4");
         when(repositorioAtivo.findBySimbolo("PETR4")).thenReturn(Optional.of(ativo));
         when(repositorio.findBySimboloAndDataAnalise("PETR4", LocalDate.now()))
                 .thenReturn(Optional.empty());
+        when(repositorioResultado.findMaisRecentePorSimbolo("PETR4")).thenReturn(List.of());
+        when(clienteInsiderIa.analisarSimulador(anyString(), anyList()))
+                .thenThrow(new ExcecaoInsiderIaIndisponivel("PETR4", "connection refused", null));
 
         var resultado = servico.analisarSimbolo("PETR4");
 
@@ -68,7 +83,7 @@ class ServicoSimuladorIaTest {
         assertEquals("PETR4", resultado.getSimbolo());
         assertFalse(resultado.getEmCache());
         assertEquals("INDISPONIVEL", resultado.getStatus());
-        assertEquals("Integração insider-ia não configurada.", resultado.getErro());
+        assertNotNull(resultado.getErro());
         assertNull(resultado.getAnaliseTexto());
         assertNull(resultado.getModeloIa());
         assertNull(resultado.getTokensUsados());
@@ -88,6 +103,9 @@ class ServicoSimuladorIaTest {
         stubLegado.setAtivo(ativo);
         when(repositorio.findBySimboloAndDataAnalise("PETR4", LocalDate.now()))
                 .thenReturn(Optional.of(stubLegado));
+        when(repositorioResultado.findMaisRecentePorSimbolo("PETR4")).thenReturn(List.of());
+        when(clienteInsiderIa.analisarSimulador(anyString(), anyList()))
+                .thenThrow(new ExcecaoInsiderIaIndisponivel("PETR4", "connection refused", null));
 
         var resultado = servico.analisarSimbolo("PETR4");
 
