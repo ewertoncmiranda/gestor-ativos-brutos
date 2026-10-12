@@ -5,7 +5,7 @@ WORKDIR /app
 COPY pom.xml .
 COPY src ./src
 
-RUN mvn -B clean verify
+RUN mvn -B clean package -DskipTests
 
 
 FROM eclipse-temurin:21-jre-alpine

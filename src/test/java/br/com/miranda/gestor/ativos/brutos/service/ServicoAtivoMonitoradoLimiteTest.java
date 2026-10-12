@@ -6,6 +6,7 @@ import br.com.miranda.gestor.ativos.brutos.external.TipoColeta;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioAtivoMonitorado;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioIdentidadeAtivo;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Collections;
 import java.util.Optional;
@@ -23,15 +24,19 @@ class ServicoAtivoMonitoradoLimiteTest {
     private final ServicoAtivoMonitorado servico = new ServicoAtivoMonitorado(repositorio, identidade);
 
     {
+        ReflectionTestUtils.setField(servico, "maxFavoritos", 35);
         when(identidade.canonico(anyString())).thenAnswer(i -> i.getArgument(0));
         when(repositorio.save(any())).thenAnswer(i -> i.getArgument(0));
-        when(repositorio.findByTipoColetaAndAtivoTrueOrderBySimboloAsc(TipoColeta.COTACAO_E_HISTORICO))
-                .thenReturn(Collections.nCopies(35, new AtivoMonitoradoEntity()));
+        doReturn(Collections.nCopies(35, new AtivoMonitoradoEntity()))
+                .when(repositorio)
+                .findByTipoColetaAndAtivoTrueOrderBySimboloAsc(any(TipoColeta.class));
     }
 
     @Test
     void trigesimo_sexto_favorito_e_recusado() {
         when(repositorio.findBySimbolo("WEGE3")).thenReturn(Optional.empty());
+        assertEquals(35, ReflectionTestUtils.getField(servico, "maxFavoritos"));
+        assertEquals(35, servico.listarFavoritos().size());
         ExcecaoLimiteFavoritos erro = assertThrows(ExcecaoLimiteFavoritos.class, () -> servico.registrar("WEGE3"));
         assertTrue(erro.getMessage().contains("35"));
         verify(repositorio, never()).save(any());
