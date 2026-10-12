@@ -89,6 +89,25 @@ public class SimuladorOperacoesController {
     }
 
     /**
+     * SIM-GES-8: GET /simulador/retroativo/historico?simbolo=X&inicio=Y&fim=Z&capital=N
+     * Histórico P&L de um período (uso retroativo), sem vínculo com operação cadastrada.
+     */
+    @GetMapping("/retroativo/historico")
+    public ResponseEntity<SimuladorOperacaoHistoricoDTO> historicoPeriodo(
+            @RequestParam String simbolo,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fim,
+            @RequestParam(required = false, defaultValue = "10000") BigDecimal capital) {
+        log.info("{} - Histórico período: {} de {} a {}", CONTROLADOR, simbolo, inicio, fim);
+        try {
+            return ResponseEntity.ok(servicoSimuladorOperacao.historicoPeriodo(simbolo, inicio, fim, capital));
+        } catch (Exception e) {
+            log.warn("{} - Erro no histórico período: {}", CONTROLADOR, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
      * SIM-GES-3: DELETE /simulador/operacoes/{id}
      * Deleta uma operação (só se status=PENDENTE).
      */

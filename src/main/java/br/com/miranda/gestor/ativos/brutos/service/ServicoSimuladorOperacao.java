@@ -180,20 +180,20 @@ public class ServicoSimuladorOperacao {
             RepositorioSimuladorAnalise.Cotacao cot = cotacoes.get(i);
             BigDecimal preco = cot.fechamento();
 
+            // Retorna fração decimal (ex: 0.036965 = 3,69%) para compatibilidade
+            // com formatarPercentual() do frontend, que multiplica por 100 internamente
             BigDecimal retornoDiaPct = i == 0
                     ? BigDecimal.ZERO
                     : preco.subtract(precoAnterior)
                             .divide(precoAnterior, 6, RoundingMode.HALF_UP)
-                            .multiply(new BigDecimal("100"))
-                            .setScale(4, RoundingMode.HALF_UP);
+                            .setScale(6, RoundingMode.HALF_UP);
 
             BigDecimal retornoAcumPct = preco.subtract(precoEntrada)
                     .divide(precoEntrada, 6, RoundingMode.HALF_UP)
-                    .multiply(new BigDecimal("100"))
-                    .setScale(4, RoundingMode.HALF_UP);
+                    .setScale(6, RoundingMode.HALF_UP);
 
             BigDecimal pnlRs = capital.multiply(retornoAcumPct)
-                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    .setScale(2, RoundingMode.HALF_UP);
 
             pontos.add(SimuladorOperacaoPontoDiarioDTO.builder()
                     .dataPregao(cot.dataPregao())
@@ -215,6 +215,73 @@ public class ServicoSimuladorOperacao {
                 .totalPnlRs(ultimo.getPnlRs())
                 .pontos(pontos)
                 .build();
+    }
+
+    /**
+     * SIM-GES-8: Histórico P&L para um período (retroativo): calcula on-the-fly
+     * para qualquer janela de datas sem vínculo com uma operação cadastrada.
+     */
+    public SimuladorOperacaoHistoricoDTO historicoPeriodo(String simbolo, LocalDate inicio,
+                                                          LocalDate fim, BigDecimal capital) {
+        log.info("{} - Histórico de período: {} de {} a {}", SERVICO, simbolo, inicio, fim);
+
+        List<RepositorioSimuladorAnalise.Cotacao> cotacoes = repositorioAnalise.cotacoes(simbolo, inicio)
+                .stream().filter(c -> !c.dataPregao().isAfter(fim)).collect(Collectors.toList());
+
+        if (cotacoes.isEmpty()) {
+            return SimuladorOperacaoHistoricoDTO.builder()
+                    .simbolo(simbolo).dataEntrada(inicio).capital(capital)
+                    .precoEntrada(null).totalRetornoPct(BigDecimal.ZERO).totalPnlRs(BigDecimal.ZERO)
+                    .pontos(List.of()).build();
+        }
+
+        List<RepositorioSimuladorAnalise.Sinal> sinais = repositorioAnalise.sinais(simbolo, inicio)
+                .stream().filter(s -> !s.dataPregao().isAfter(fim)).collect(Collectors.toList());
+
+        Map<LocalDate, Map<String, Integer>> quintilPorData = sinais.stream()
+                .filter(s -> s.quintil() != null)
+                .collect(Collectors.groupingBy(
+                        RepositorioSimuladorAnalise.Sinal::dataPregao,
+                        Collectors.toMap(
+                                RepositorioSimuladorAnalise.Sinal::versaoEstrategia,
+                                RepositorioSimuladorAnalise.Sinal::quintil,
+                                (a, b) -> a)));
+
+        BigDecimal precoEntrada = cotacoes.get(0).fechamento();
+        List<SimuladorOperacaoPontoDiarioDTO> pontos = new ArrayList<>();
+        BigDecimal precoAnterior = precoEntrada;
+
+        for (int i = 0; i < cotacoes.size(); i++) {
+            RepositorioSimuladorAnalise.Cotacao cot = cotacoes.get(i);
+            BigDecimal preco = cot.fechamento();
+
+            BigDecimal retornoDiaPct = i == 0
+                    ? BigDecimal.ZERO
+                    : preco.subtract(precoAnterior).divide(precoAnterior, 6, RoundingMode.HALF_UP)
+                            .setScale(6, RoundingMode.HALF_UP);
+
+            BigDecimal retornoAcumPct = preco.subtract(precoEntrada)
+                    .divide(precoEntrada, 6, RoundingMode.HALF_UP)
+                    .setScale(6, RoundingMode.HALF_UP);
+
+            BigDecimal pnlRs = capital.multiply(retornoAcumPct).setScale(2, RoundingMode.HALF_UP);
+
+            pontos.add(SimuladorOperacaoPontoDiarioDTO.builder()
+                    .dataPregao(cot.dataPregao()).preco(preco)
+                    .retornoDiaPct(retornoDiaPct).retornoAcumPct(retornoAcumPct).pnlRs(pnlRs)
+                    .quintilPorEstrategia(quintilPorData.getOrDefault(cot.dataPregao(), Map.of()))
+                    .build());
+
+            precoAnterior = preco;
+        }
+
+        SimuladorOperacaoPontoDiarioDTO ultimo = pontos.get(pontos.size() - 1);
+        return SimuladorOperacaoHistoricoDTO.builder()
+                .simbolo(simbolo).dataEntrada(inicio).capital(capital)
+                .precoEntrada(precoEntrada)
+                .totalRetornoPct(ultimo.getRetornoAcumPct())
+                .totalPnlRs(ultimo.getPnlRs())
+                .pontos(pontos).build();
     }
 }
 
