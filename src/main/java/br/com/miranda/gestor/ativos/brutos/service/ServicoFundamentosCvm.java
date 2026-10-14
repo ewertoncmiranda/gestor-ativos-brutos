@@ -5,6 +5,7 @@ import br.com.miranda.gestor.ativos.brutos.external.IndicadorFundamentalistaEnti
 import br.com.miranda.gestor.ativos.brutos.external.dto.FundamentosCvmDTO;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioHistoricoAcao;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioIndicadorFundamentalista;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioCamposFundamentosF360;
 import br.com.miranda.gestor.ativos.brutos.tools.CalculadoraMultiplos;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ public class ServicoFundamentosCvm {
 
     private final RepositorioIndicadorFundamentalista repositorioIndicador;
     private final RepositorioHistoricoAcao repositorioHistorico;
+    private final RepositorioCamposFundamentosF360 repositorioCamposF360;
 
     public FundamentosCvmDTO buscarPorSimbolo(String simbolo) {
         String normalizado = simbolo == null ? "" : simbolo.trim().toUpperCase();
@@ -40,6 +42,7 @@ public class ServicoFundamentosCvm {
             return FundamentosCvmDTO.vazio(normalizado);
         }
 
+        repositorioCamposF360.preencher(fundamento.get());
         FundamentosCvmDTO dto = FundamentosCvmDTO.de(fundamento.get());
         dto.setDefasagemDias(
                 CalculadoraMultiplos.defasagemEmDias(dto.getPeriodo(), LocalDate.now()));

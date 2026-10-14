@@ -5,6 +5,7 @@ import br.com.miranda.gestor.ativos.brutos.external.IndicadorFundamentalistaEnti
 import br.com.miranda.gestor.ativos.brutos.external.dto.FundamentosCvmDTO;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioHistoricoAcao;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioIndicadorFundamentalista;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioCamposFundamentosF360;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,9 @@ class ServicoFundamentosCvmTest {
 
     @Mock
     private RepositorioHistoricoAcao repositorioHistorico;
+
+    @Mock
+    private RepositorioCamposFundamentosF360 repositorioCamposF360;
 
     @InjectMocks
     private ServicoFundamentosCvm servico;
@@ -150,5 +154,53 @@ class ServicoFundamentosCvmTest {
 
         assertNull(dto.getPrecoLucro());
         assertNotNull(dto.getPrecoValorPatrimonial());
+    }
+
+    @Test
+    void expoe_campos_avancados_do_etl_sem_alterar_multiplos_antigos() {
+        fundamentoWege3.setEbitda(new BigDecimal("2300000.00"));
+        fundamentoWege3.setAtivoCirculante(new BigDecimal("9000000.00"));
+        fundamentoWege3.setPassivoCirculante(new BigDecimal("3000000.00"));
+        fundamentoWege3.setCoberturaJuros(new BigDecimal("4.2500"));
+        fundamentoWege3.setLiquidezCorrente(new BigDecimal("3.0000"));
+        fundamentoWege3.setLiquidezSeca(new BigDecimal("2.7000"));
+        fundamentoWege3.setDso(new BigDecimal("36.50"));
+        fundamentoWege3.setGrahamNumber(new BigDecimal("11.899000"));
+        fundamentoWege3.setPl(new BigDecimal("32.90"));
+        fundamentoWege3.setEvEbitda(new BigDecimal("8.10"));
+        fundamentoWege3.setPlSetorialMediana(new BigDecimal("18.00"));
+        comFundamento(fundamentoWege3);
+        comCotacao(new BigDecimal("50.00"));
+
+        FundamentosCvmDTO dto = servico.buscarPorSimbolo("WEGE3");
+
+        assertEquals(new BigDecimal("2300000.00"), dto.getEbitda());
+        assertEquals(new BigDecimal("9000000.00"), dto.getAtivoCirculante());
+        assertEquals(new BigDecimal("3000000.00"), dto.getPassivoCirculante());
+        assertEquals(new BigDecimal("4.2500"), dto.getCoberturaJuros());
+        assertEquals(new BigDecimal("3.0000"), dto.getLiquidezCorrente());
+        assertEquals(new BigDecimal("2.7000"), dto.getLiquidezSeca());
+        assertEquals(new BigDecimal("36.50"), dto.getDso());
+        assertEquals(new BigDecimal("11.899000"), dto.getGrahamNumber());
+        assertEquals(new BigDecimal("32.90"), dto.getPl());
+        assertEquals(new BigDecimal("8.10"), dto.getEvEbitda());
+        assertEquals(new BigDecimal("18.00"), dto.getPlSetorialMediana());
+        assertEquals(new BigDecimal("32.9012"), dto.getPrecoLucro());
+        assertEquals(new BigDecimal("12.0447"), dto.getPrecoValorPatrimonial());
+    }
+
+    @Test
+    void campos_avancados_ausentes_permanecem_nulos() {
+        comFundamento(fundamentoWege3);
+        when(repositorioHistorico.findFirstBySimboloOrderByTimestampDesc(anyString()))
+                .thenReturn(Optional.empty());
+
+        FundamentosCvmDTO dto = servico.buscarPorSimbolo("WEGE3");
+
+        assertNull(dto.getEbitda());
+        assertNull(dto.getAtivoCirculante());
+        assertNull(dto.getCoberturaJuros());
+        assertNull(dto.getGrahamNumber());
+        assertNull(dto.getPlSetorialMediana());
     }
 }
