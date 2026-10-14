@@ -79,6 +79,36 @@ public class FundamentosCvmDTO {
     @JsonProperty("fco_bruto")
     private BigDecimal fcoBruto;
 
+    private BigDecimal ebitda;
+
+    @JsonProperty("ativo_circulante")
+    private BigDecimal ativoCirculante;
+
+    @JsonProperty("passivo_circulante")
+    private BigDecimal passivoCirculante;
+
+    @JsonProperty("cobertura_juros")
+    private BigDecimal coberturaJuros;
+
+    @JsonProperty("liquidez_corrente")
+    private BigDecimal liquidezCorrente;
+
+    @JsonProperty("liquidez_seca")
+    private BigDecimal liquidezSeca;
+
+    private BigDecimal dso;
+
+    @JsonProperty("graham_number")
+    private BigDecimal grahamNumber;
+
+    private BigDecimal pl;
+
+    @JsonProperty("ev_ebitda")
+    private BigDecimal evEbitda;
+
+    @JsonProperty("pl_setorial_mediana")
+    private BigDecimal plSetorialMediana;
+
     // --- resultado ---
     @JsonProperty("receita_liquida")
     private BigDecimal receitaLiquida;
@@ -129,6 +159,17 @@ public class FundamentosCvmDTO {
                 .fluxoCaixaOperacional(entidade.getFluxoCaixaOperacional())
                 .fluxoCaixaLivre(entidade.getFluxoCaixaLivre())
                 .fcoBruto(entidade.getFcoBruto())
+                .ebitda(entidade.getEbitda())
+                .ativoCirculante(entidade.getAtivoCirculante())
+                .passivoCirculante(entidade.getPassivoCirculante())
+                .coberturaJuros(entidade.getCoberturaJuros())
+                .liquidezCorrente(entidade.getLiquidezCorrente())
+                .liquidezSeca(entidade.getLiquidezSeca())
+                .dso(entidade.getDso())
+                .grahamNumber(entidade.getGrahamNumber())
+                .pl(entidade.getPl())
+                .evEbitda(entidade.getEvEbitda())
+                .plSetorialMediana(entidade.getPlSetorialMediana())
                 .receitaLiquida(entidade.getReceitaLiquida())
                 .ebit(entidade.getEbit())
                 .lucroLiquido(entidade.getLucroLiquido())

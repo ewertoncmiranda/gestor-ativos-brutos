@@ -489,3 +489,27 @@ Expor dados prontos para uma experiência de ticker: cards enriquecidos, aba Ope
 | SIM-GES-6 | Retroativo por estratégia e ativo | `GET /simulador/retroativo?simbolo=&versao=&janela=&inicio=` | SIM-GES-2 | Cruza quintis históricos com retornos reais do COTAHIST; retorna lista de entradas com resultado, taxa de acerto e retorno médio | IMPLEMENTADO (2026-10-12): sinais reais de `simulador_resultado` cruzados com fechamentos de `cotacao_b3_diaria`, avançando por número exato de pregões; estatísticas ficam `null` quando não há amostra |
 | SIM-GES-7 | Cenário pontual (what-if) | `GET /simulador/cenario?simbolo=&data=&janela=&capital=` | SIM-GES-2 | Para data e janela fornecidas, retorna P&L real por estratégia, CDI do período e R$ ganho/perdido | IMPLEMENTADO (2026-10-12): usa pregões reais do COTAHIST, estratégias disponíveis em `simulador_resultado` e CDI diário composto de `indice_macro`; dado ausente retorna `null`, nunca zero sintético |
 | SIM-GES-8 | Testes de contrato | `tests/simulador/**Test.java` | SIM-GES-1..7 | GET sem gravação; POST idempotente com mesmo pregão; ausência de token IA nos logs | IMPLEMENTADO (2026-10-12): Estrutura de testes existente; pode ser expandida conforme necessidade |
+
+---
+
+## Plano F360: dados para a ficha do ativo centralizada (2026-10-14)
+
+**Status:** PLANEJADO · **Contexto:** `painel-ativos-frontend/SPEC.md`, Plano F360. Lá estão os contratos C1–C7, as regras de execução paralela e os três grupos de agentes. Estas três tarefas estão no **Grupo C**. Rótulo `F360-GES-*`, reservado.
+
+**Diagnóstico (2026-10-14):** o ETL já grava as colunas V39/V40 em `indicador_fundamentalista` (`ebitda`, `ativo_circulante`, `passivo_circulante`, `cobertura_juros`, `liquidez_corrente`, `liquidez_seca`, `dso`, `graham_number`, `pl`, `ev_ebitda`, `pl_setorial_mediana`). Também grava `cvm_empresa.cnae`/`grupo_economico`/`situacao_registro` e `cvm_ticker.isin`/`free_float`. Nenhum desses campos é exposto pelo gestor hoje: `FundamentosCvmDTO` e `IndicadorFundamentalistaEntity` não os mapeiam.
+
+### Regras para agentes
+
+- As três tarefas são independentes entre si e do painel: o painel trata ausência como `null`, e cada tarefa aqui só cria ou edita os arquivos da sua linha.
+- Todas as rotas são `GET` e sem efeito colateral. Campo ausente sai `null`, nunca zero. Símbolo sem dado retorna 200 com campos nulos (mesmo padrão de `fundamentos-cvm`).
+- Coluna que ainda não existir no banco (migration não aplicada) não pode derrubar a rota. A consulta nativa confere a coluna em `information_schema` e devolve `null` para ela, como o `RepositorioOpcoes` já faz com `ativo_objeto`.
+- Branch `feature-f360-ges-N` a partir da `develop`, commit por pathspec e PR automático. O status vai em `docs/f360/F360-GES-N.md`, não nesta tabela.
+- O gestor não calcula esses indicadores: só lê o que o ETL gravou.
+
+### Tarefas desta aplicação
+
+| ID | Tarefa | Arquivos (posse exclusiva) | Contrato (C6 do painel) | Aceite |
+|---|---|---|---|---|
+| F360-GES-1 | Expor V39/V40 em `fundamentos-cvm` | editados: `external/IndicadorFundamentalistaEntity.java`, `external/dto/FundamentosCvmDTO.java`, `src/test/.../service/ServicoFundamentosCvmTest.java` | `GET /analises/{s}/fundamentos-cvm` ganha `ebitda`, `ativo_circulante`, `passivo_circulante`, `cobertura_juros`, `liquidez_corrente`, `liquidez_seca`, `dso`, `graham_number`, `pl`, `ev_ebitda`, `pl_setorial_mediana` (snake_case, `BigDecimal`, podem ser `null`) | Teste cobre entidade com os 11 campos preenchidos refletidos no DTO, entidade com os campos `null` saindo `null`, e os campos antigos inalterados. `preco_lucro` e `preco_valor_patrimonial` continuam calculados na leitura como hoje |
+| F360-GES-2 | Rota de identidade do ativo | novos: `entrypoint/controller/IdentidadeAtivoController.java`, `service/ServicoIdentidadeAtivo.java`, `repository/RepositorioIdentidadeAtivo.java` (consulta nativa em `cvm_ticker` + `cvm_empresa`), `external/dto/IdentidadeAtivoDTO.java`, `src/test/.../entrypoint/controller/IdentidadeAtivoControllerTest.java` | `GET /ativos/{s}/identidade` → `{ simbolo, cnpj, razao_social, isin, cnae, grupo_economico, situacao_registro, data_constituicao, uf_municipio, free_float }` | Não edita `CvmTickerEntity` nem outras entidades. Ticker desconhecido retorna 200 com campos `null`. Coluna inexistente vira `null` sem erro. Teste cobre ativo completo, ativo desconhecido e base sem as colunas novas. O mapeamento `/ativos/{s}/identidade` não conflita com rotas `/ativos/**` existentes |
+| F360-GES-3 | Histórico de fundamentos para sparklines | novos: `entrypoint/controller/HistoricoFundamentosController.java`, `service/ServicoHistoricoFundamentos.java`, `repository/RepositorioHistoricoFundamentos.java` (consulta nativa em `indicador_fundamentalista`), `external/dto/HistoricoFundamentosDTO.java`, `src/test/.../entrypoint/controller/HistoricoFundamentosControllerTest.java` | `GET /analises/{s}/fundamentos-cvm/historico?anos=5` → `{ simbolo, pontos: [{ periodo, tipo_periodo, roe, roic, margem_liquida, divida_liquida, ebitda, liquidez_corrente, lpa, vpa, receita_liquida, lucro_liquido }] }` | Não edita `AnaliseAcaoController` nem `IndicadorFundamentalistaEntity`. Usa só ANUAL e TTM, mais recente por período, em ordem crescente. `anos` vai de 1 a 10 (padrão 5; fora da faixa, 400). Prefere grupo consolidado e cai para individual quando não houver. Teste cobre ordenação, limite de anos, símbolo sem dados (`pontos: []`) e coluna ausente |
