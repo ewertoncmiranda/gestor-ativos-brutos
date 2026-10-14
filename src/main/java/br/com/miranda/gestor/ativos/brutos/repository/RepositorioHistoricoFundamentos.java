@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Date;
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,7 +32,7 @@ public class RepositorioHistoricoFundamentos {
                     .reduce((a, b) -> a + ", " + b).orElse("");
             List<Ponto> consolidados = consultar(simbolo, anos, colunas.contains("grupo") ? "con" : null, metricas);
             List<Ponto> linhas = consolidados.isEmpty() ? consultar(simbolo, anos, null, metricas) : consolidados;
-            Map<Date, Ponto> porPeriodo = new LinkedHashMap<>();
+            Map<LocalDate, Ponto> porPeriodo = new LinkedHashMap<>();
             for (Ponto ponto : linhas) {
                 Ponto anterior = porPeriodo.get(ponto.periodo());
                 if (anterior == null || ("ANUAL".equals(ponto.tipoPeriodo()) && !"ANUAL".equals(anterior.tipoPeriodo()))) {
