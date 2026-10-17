@@ -102,6 +102,40 @@ public class IndicadorFundamentalistaEntity {
     @Column(name = "fco_bruto", precision = 24, scale = 2)
     private BigDecimal fcoBruto;
 
+    // Métricas publicadas pelo ETL (V39/V40). Valores sem cobertura ficam nulos.
+    @Transient
+    private BigDecimal ebitda;
+
+    @Transient
+    private BigDecimal ativoCirculante;
+
+    @Transient
+    private BigDecimal passivoCirculante;
+
+    @Transient
+    private BigDecimal coberturaJuros;
+
+    @Transient
+    private BigDecimal liquidezCorrente;
+
+    @Transient
+    private BigDecimal liquidezSeca;
+
+    @Transient
+    private BigDecimal dso;
+
+    @Transient
+    private BigDecimal grahamNumber;
+
+    @Transient
+    private BigDecimal pl;
+
+    @Transient
+    private BigDecimal evEbitda;
+
+    @Transient
+    private BigDecimal plSetorialMediana;
+
     @Column(length = 20, nullable = false)
     private String fonte;
 
