@@ -75,6 +75,40 @@ public class RepositorioSaudeDados {
                 comInsight == null ? null : comInsight.toLocalDate());
     }
 
+    /**
+     * Ultima carga de cada etapa do ETL (Plano CARGA, infra V44): ultimo
+     * sucesso, status e primeiro erro da ultima tentativa.
+     */
+    public record CargaRecente(LocalDateTime ultimoSucessoEm, String ultimoStatus,
+                               LocalDateTime ultimaTentativaEm, String erro) {
+    }
+
+    /** Por etapa (COTAHIST, DFP, TTM...). Vazio enquanto o banco nao tem a V44. */
+    public Map<String, CargaRecente> ultimasCargas() {
+        Integer view = jdbc.getJdbcTemplate().queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                        + "WHERE table_schema = DATABASE() AND table_name = 'vw_carga_ultima'", Integer.class);
+        if (view == null || view == 0) {
+            return Map.of();
+        }
+        return jdbc.query(
+                "SELECT u.etapa, u.ultimo_sucesso_em, u.ultimo_status, u.ultima_tentativa_em, "
+                        + " COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.erros_json, '$[0]')), x.mensagem_erro) erro "
+                        + "FROM vw_carga_ultima u "
+                        + "LEFT JOIN carga_etapa e ON e.execucao_id = u.ultima_execucao_id AND e.etapa = u.etapa "
+                        + "LEFT JOIN carga_execucao x ON x.id = u.ultima_execucao_id",
+                Map.of(),
+                rs -> {
+                    Map<String, CargaRecente> saida = new java.util.HashMap<>();
+                    while (rs.next()) {
+                        saida.put(rs.getString("etapa"), new CargaRecente(instante(rs, "ultimo_sucesso_em"),
+                                rs.getString("ultimo_status"), instante(rs, "ultima_tentativa_em"),
+                                rs.getString("erro")));
+                    }
+                    return saida;
+                });
+    }
+
     /** Ultima falha registrada por fonte, para a tela dizer o que quebrou. */
     public Map<String, String> ultimosErros() {
         return jdbc.query(
