@@ -1,5 +1,6 @@
 package br.com.miranda.gestor.ativos.brutos.external.http;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,7 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
@@ -70,14 +72,22 @@ public class ClienteEtl {
 
     public Resposta disparar(Map<String, Object> pedido) {
         HttpHeaders cabecalhos = new HttpHeaders();
-        cabecalhos.setContentType(MediaType.APPLICATION_JSON);
+        cabecalhos.setContentType(new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8));
         if (!token.isEmpty()) {
             cabecalhos.set(CABECALHO_TOKEN, token);
+        }
+        // O ETL so le o corpo pelo Content-Length e recusa corpo chunked; serializado como String,
+        // o StringHttpMessageConverter grava com Content-Length (o Jackson direto sai chunked no Spring 6.1).
+        String corpo;
+        try {
+            corpo = json.writeValueAsString(pedido);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Falha ao serializar o pedido de carga", e);
         }
         log.info("{} - POST /cargas tipo={}", CLIENTE, pedido.get("tipo"));
         try {
             ResponseEntity<String> resposta = restTemplate.exchange(baseUrl + "/cargas", HttpMethod.POST,
-                    new HttpEntity<>(pedido, cabecalhos), String.class);
+                    new HttpEntity<>(corpo, cabecalhos), String.class);
             return new Resposta(resposta.getStatusCode().value(), ler(resposta.getBody()));
         } catch (HttpStatusCodeException e) {
             // 409 (carga em andamento), 400, 401... seguem para o servico como vieram.
