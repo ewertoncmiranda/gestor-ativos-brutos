@@ -556,3 +556,17 @@ A disponibilidade de V42/V43 é verificada antes das operações; ausência de m
 **Verificação local (2026-10-18):** testes focados de Carteiras: 15/15 passaram (`ServicoCarteirasTest` e `ServicoCarteiraFinanceiraTest`, Maven com `-Dnet.bytebuddy.experimental=true` para Java 26). A compilação de produção com recompilação das 229 fontes (`mvnw -o -DskipTests compile`) passou. Suíte completa executada antes desta revisão: 205 testes, 204 passaram e 1 falhou em `ServicoSimuladorOperacaoTest.historico_operacao_calcula_pnl_diario` por diferença de escala `BigDecimal` (`0` vs `0.000000`), sem relação com Carteiras; nenhum teste do simulador foi alterado. Validação de integração JDBC contra migration V43 aplicada continua pendente.
 
 A sequência global, contratos de banco e regras de exclusividade entre agentes estão no hub `infra-b3-ecossytem/SPEC.md` (seção OPDB/CARTDB).
+
+---
+
+## Plano CARGA: fachada das cargas do ETL para o painel (2026-10-18)
+
+**Status:** PLANEJADO · **Contexto, contrato (V44, estados, API do ETL) e ordem:** `infra-b3-ecossytem/SPEC.md`, Plano CARGA. Rótulo `CARGA-GES-*`, reservado. O gestor só lê as tabelas de carga e repassa o disparo; quem executa e grava é o ETL.
+
+### Tarefas desta aplicação
+
+| ID | Tarefa | Endpoint/arquivos | Depende | Aceite | Status |
+|---|---|---|---|---|---|
+| CARGA-GES-1 | Leitura das cargas | `GET /cargas?limite=&status=&desde=`, `GET /cargas/{id}` (execução + etapas + arquivos de `etl_execucao`), `GET /cargas/ultimas` (`vw_carga_ultima`) | CARGA-INFRA-1 | Somente leitura, sem efeito colateral; JSON camelCase com `metricas`, `alertas` e `erros` já desserializados; base sem a V44 responde 503 com motivo, sem erro 500; testes de contrato | IMPLEMENTADO |
+| CARGA-GES-2 | Disparo repassado ao ETL | `POST /cargas` → `ETL_URL/cargas` com `solicitada_por=PAINEL` (snake_case, contrato do ETL) e `ETL_TOKEN` | CARGA-GES-1, CARGA-ETL-3, DEC-CARGA-1 | Repassa 202/409 sem reinterpretar; ETL fora do ar = 503 com mensagem; timeout curto (o ETL responde na hora); valida `tipo`, `anos` (2016–ano atual), `simbolos` e `etapas` do catálogo antes de repassar | IMPLEMENTADO |
+| CARGA-GES-3 | Saúde dos dados pela carga | `ServicoSaudeDados` | CARGA-GES-1 | Atualidade de cada fonte vem de `vw_carga_ultima` (último sucesso e última tentativa); somem as instruções antigas de CLI (`etl-fundamentos-cvm --ano`, `--ttm`, `--comunicados`, `--cotahist`), trocadas por "rodar carga" | IMPLEMENTADO |
