@@ -5,11 +5,12 @@ import java.time.LocalDate;
 
 /**
  * Uma opcao da B3 num pregao (tabela {@code opcao_b3_diaria}).
- * bdi: "12" = call, "14" = put.
+ * tipoOpcao vem do TPMERC curado (CALL/PUT); BDI permanece código de origem independente.
  */
 public record OpcaoB3DTO(
         String simbolo,
         String bdi,
+        String tipoOpcao,
         LocalDate dataPregao,
         LocalDate dataVencimento,
         BigDecimal precoExercicio,
