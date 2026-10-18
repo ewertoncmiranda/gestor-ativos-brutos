@@ -58,7 +58,7 @@ class OpcaoControllerTest {
 
     @Test
     void cadeiaValidaMantemAliasEListaDados() {
-        var opcao = new OpcaoB3DTO("B3SAK10", "12", LocalDate.of(2026, 10, 9),
+        var opcao = new OpcaoB3DTO("B3SAK10", "12", "CALL", LocalDate.of(2026, 10, 9),
                 LocalDate.of(2026, 11, 20), new BigDecimal("10.00"), BigDecimal.ONE,
                 BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, 10L, 3,
                 new BigDecimal("1000.00"));
@@ -95,7 +95,7 @@ class OpcaoControllerTest {
 
     @Test
     void chamadasRepetidasDeOpcoesSaoSomenteLeiturasDoRepositorio() {
-        var opcao = new OpcaoB3DTO("PETRK10", "12", LocalDate.of(2026, 10, 9),
+        var opcao = new OpcaoB3DTO("PETRK10", "12", "CALL", LocalDate.of(2026, 10, 9),
                 LocalDate.of(2026, 11, 20), new BigDecimal("10.00"), BigDecimal.ONE,
                 BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, 10L, 3,
                 new BigDecimal("1000.00"));

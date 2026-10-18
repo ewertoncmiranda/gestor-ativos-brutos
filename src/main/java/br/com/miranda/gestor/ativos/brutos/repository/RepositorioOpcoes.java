@@ -32,15 +32,17 @@ public class RepositorioOpcoes {
         MapSqlParameterSource params = new MapSqlParameterSource("ativo", simbolo);
 
         StringBuilder sql = new StringBuilder(
-                "SELECT simbolo, bdi, data_pregao, data_vencimento, preco_exercicio, "
+                "SELECT simbolo, bdi, tipo_opcao, data_pregao, data_vencimento, preco_exercicio, "
                         + "abertura, maxima, minima, fechamento, preco_medio, volume, "
                         + "numero_negocios, volume_financeiro "
                         + "FROM opcao_b3_diaria "
                         + "WHERE ativo_objeto = :ativo "
+                        + "AND status_validacao = 'VALIDA' "
                         + "AND data_vencimento IS NOT NULL "
                         + "AND YEAR(data_vencimento) < 9999 "
                         + "AND data_pregao = (SELECT MAX(data_pregao) FROM opcao_b3_diaria "
-                        + "WHERE ativo_objeto = :ativo AND data_vencimento IS NOT NULL AND YEAR(data_vencimento) < 9999)");
+                        + "WHERE ativo_objeto = :ativo AND status_validacao = 'VALIDA' "
+                        + "AND data_vencimento IS NOT NULL AND YEAR(data_vencimento) < 9999)");
 
         if (vencimento != null && vencimento.matches("\\d{6}")) {
             int ano = Integer.parseInt(vencimento.substring(0, 4));
@@ -55,6 +57,7 @@ public class RepositorioOpcoes {
                 (rs, i) -> new OpcaoB3DTO(
                         rs.getString("simbolo"),
                         rs.getString("bdi"),
+                        rs.getString("tipo_opcao"),
                         rs.getDate("data_pregao").toLocalDate(),
                         rs.getDate("data_vencimento").toLocalDate(),
                         rs.getBigDecimal("preco_exercicio"),
@@ -73,7 +76,8 @@ public class RepositorioOpcoes {
         return jdbc.queryForList(
                 "SELECT DISTINCT DATE_FORMAT(data_vencimento, '%Y%m') AS vm "
                         + "FROM opcao_b3_diaria WHERE ativo_objeto = :ativo "
-                        + "AND data_vencimento IS NOT NULL AND YEAR(data_vencimento) < 9999 ORDER BY vm",
+                        + "AND status_validacao = 'VALIDA' AND data_vencimento IS NOT NULL "
+                        + "AND YEAR(data_vencimento) < 9999 ORDER BY vm",
                 new MapSqlParameterSource("ativo", simbolo),
                 String.class);
     }
