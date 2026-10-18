@@ -36,6 +36,17 @@ public class ServicoSaudeDados {
     private record Definicao(String codigo, String nome, int prazoHoras, boolean critica, String comoResolver) {
     }
 
+    // O ETL nao tem mais comandos de linha: a carga sai pela rotina ou pelo painel (Plano CARGA).
+    static final String RODAR_CARGA = "Rotina 'B3 - Rotina da manha', ou 'Rodar carga' em Avaliação > Cargas de dados.";
+
+    /** Fonte da saude dos dados -> etapa das cargas do ETL (vw_carga_ultima). */
+    static final Map<String, String> ETAPA_DA_FONTE = Map.of(
+            "CVM_DFP", "DFP",
+            "CVM_TTM", "TTM",
+            "CVM_IPE", "IPE",
+            "B3_COTAHIST", "COTAHIST",
+            "EVENTOS_CORPORATIVOS", "EVENTOS");
+
     // Prazos: rotina + folga de fim de semana/feriado.
     private static final List<Definicao> FONTES = List.of(
             // BRAPI so para os favoritos e so no pregao (infra V13): fim de semana
@@ -48,25 +59,21 @@ public class ServicoSaudeDados {
                     "Rotina 'B3 - Rotina da manha' ou: gerar-insights python -m app.insights_diarios --recuperar"),
             new Definicao("CDI", "CDI (Banco Central)", 120, true,
                     "Reiniciar o gestor: completa o histórico do CDI na subida."),
-            new Definicao("CVM_DFP", "Balanços anuais (CVM DFP)", 192, true,
-                    "Rotina 'B3 - Rotina da manha' ou: etl-fundamentos-cvm --ano <ano>"),
-            new Definicao("CVM_TTM", "Últimos 12 meses (CVM ITR)", 192, false,
-                    "Rotina 'B3 - Rotina da manha' ou: etl-fundamentos-cvm --ttm --ano <ano>"),
-            new Definicao("CVM_IPE", "Comunicados (CVM IPE)", 80, false,
-                    "Rotina 'B3 - Rotina da manha' ou: etl-fundamentos-cvm --comunicados"),
-            new Definicao("B3_COTAHIST", "Preço oficial (B3 COTAHIST)", 192, false,
-                    "Rotina 'B3 - Rotina da manha' ou: etl-fundamentos-cvm --cotahist --ano <ano>"),
+            new Definicao("CVM_DFP", "Balanços anuais (CVM DFP)", 192, true, RODAR_CARGA),
+            new Definicao("CVM_TTM", "Últimos 12 meses (CVM ITR)", 192, false, RODAR_CARGA),
+            new Definicao("CVM_IPE", "Comunicados (CVM IPE)", 80, false, RODAR_CARGA),
+            new Definicao("B3_COTAHIST", "Preço oficial (B3 COTAHIST)", 192, false, RODAR_CARGA),
             new Definicao("DIARIO", "Diário de sinais", 80, true,
                     "Rotina 'B3 - Rotina da manha' ou: gerar-insights python -m app.validacao.diario registrar --recuperar"),
             new Definicao("BACKUP_MYSQL", "Backup do banco", 30, true,
                     "Rotina 'B3 - Backup MySQL' no Agendador do Windows."),
             new Definicao("BACKTEST", "Backtest walk-forward", 24 * 35, false,
                     "python -m app.validacao.backtest (gerar-insights)."),
-            // Plano LAC (infra V16): sem job/rotina ainda (LAC-INFRA-4, calculo
-            // mensal) - nao criticas de proposito, so aparecem ATRASADA/SEM_DADO
-            // ate essa rotina existir, o que e esperado, nao um problema.
+            // Mensal: carga PARCIAL de EVENTOS feita pela rotina da manha (CARGA-INFRA-3).
             new Definicao("EVENTOS_CORPORATIVOS", "Eventos corporativos inferidos (desdobro/grupamento)",
-                    24 * 45, false, "Ainda sem rotina de calculo (Plano LAC, LAC-INFRA-4/LAC-INS-9)."),
+                    24 * 45, false, "Carga mensal da rotina da manhã, ou 'Rodar carga' parcial com a etapa "
+                    + "Eventos em Avaliação > Cargas de dados."),
+            // Plano LAC: sem rotina de calculo mensal ainda - nao critica de proposito.
             new Definicao("FATORES", "Fatores de ranking (Plano LAC)", 24 * 35, false,
                     "Ainda sem rotina de calculo mensal (Plano LAC, LAC-INFRA-4).")
     );
@@ -78,7 +85,8 @@ public class ServicoSaudeDados {
         LocalDateTime agora = LocalDateTime.now();
         Map<String, LocalDateTime> ultimas = new java.util.HashMap<>(repositorio.ultimasAtualizacoes());
         ultimas.putAll(repositorioLacunas.ultimosCalculos());
-        Map<String, String> erros = repositorio.ultimosErros();
+        Map<String, String> erros = new java.util.HashMap<>(repositorio.ultimosErros());
+        comCargas(ultimas, erros, repositorio.ultimasCargas());
 
         RepositorioSaudeDados.CoberturaInsightsBase insightsBase = repositorio.coberturaInsightsBase();
         List<Fonte> fontes = FONTES.stream()
@@ -108,6 +116,32 @@ public class ServicoSaudeDados {
                         repositorio.paresComparados(JANELA_PRECOS_DIAS), divergencias),
                 aliases,
                 repositorioLacunas.coberturaProventosContabeis());
+    }
+
+    /**
+     * Junta as cargas do ETL (vw_carga_ultima) ao que ja vinha de etl_execucao:
+     * vale o sucesso mais recente das duas fontes (o historico anterior a V44 so
+     * existe em etl_execucao). Ultima tentativa com FALHA depois do ultimo
+     * sucesso vira o erro mostrado na tela.
+     */
+    static void comCargas(Map<String, LocalDateTime> ultimas, Map<String, String> erros,
+                          Map<String, RepositorioSaudeDados.CargaRecente> cargas) {
+        ETAPA_DA_FONTE.forEach((fonte, etapa) -> {
+            RepositorioSaudeDados.CargaRecente carga = cargas.get(etapa);
+            if (carga == null) {
+                return;
+            }
+            LocalDateTime sucesso = carga.ultimoSucessoEm();
+            LocalDateTime anterior = ultimas.get(fonte);
+            if (sucesso != null && (anterior == null || sucesso.isAfter(anterior))) {
+                ultimas.put(fonte, sucesso);
+            }
+            boolean falhouDepois = "FALHA".equals(carga.ultimoStatus())
+                    && (sucesso == null || (carga.ultimaTentativaEm() != null && carga.ultimaTentativaEm().isAfter(sucesso)));
+            if (falhouDepois) {
+                erros.put(fonte, "Última carga falhou" + (carga.erro() == null ? "" : ": " + carga.erro()));
+            }
+        });
     }
 
     private static Fonte fonte(Definicao d, LocalDateTime ultima, String erro, LocalDateTime agora) {
