@@ -34,7 +34,7 @@ public class RepositorioOpcoes {
         StringBuilder sql = new StringBuilder(
                 "SELECT simbolo, bdi, tipo_opcao, data_pregao, data_vencimento, preco_exercicio, "
                         + "abertura, maxima, minima, fechamento, preco_medio, volume, "
-                        + "numero_negocios, volume_financeiro "
+                        + "numero_negocios, volume_financeiro, melhor_oferta_compra, melhor_oferta_venda, indice_correcao "
                         + "FROM opcao_b3_diaria "
                         + "WHERE ativo_objeto = :ativo "
                         + "AND status_validacao = 'VALIDA' "
@@ -68,7 +68,10 @@ public class RepositorioOpcoes {
                         rs.getBigDecimal("preco_medio"),
                         rs.getObject("volume", Long.class),
                         rs.getObject("numero_negocios", Integer.class),
-                        rs.getBigDecimal("volume_financeiro")));
+                        rs.getBigDecimal("volume_financeiro"),
+                        rs.getBigDecimal("melhor_oferta_compra"),
+                        rs.getBigDecimal("melhor_oferta_venda"),
+                        rs.getString("indice_correcao")));
     }
 
     /** Vencimentos disponiveis para um ativo (formato YYYYMM, ordenado). */

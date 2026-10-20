@@ -27,7 +27,14 @@ public record PregoesDTO(
 
     public record Vela(LocalDate data, LocalDate dataFim, String codigo, BigDecimal abertura, BigDecimal maxima,
                        BigDecimal minima, BigDecimal fechamento, Long volume, Long numeroNegocios, BigDecimal volumeFinanceiro,
-                       int pregoes, String fonte) {
+                       int pregoes, String fonte, BigDecimal precoMedio,
+                       BigDecimal melhorOfertaCompra, BigDecimal melhorOfertaVenda, String marcaEx) {
+        public Vela(LocalDate data, LocalDate dataFim, String codigo, BigDecimal abertura, BigDecimal maxima,
+                    BigDecimal minima, BigDecimal fechamento, Long volume, Long numeroNegocios,
+                    BigDecimal volumeFinanceiro, int pregoes, String fonte) {
+            this(data, dataFim, codigo, abertura, maxima, minima, fechamento, volume, numeroNegocios,
+                    volumeFinanceiro, pregoes, fonte, null, null, null, null);
+        }
     }
 
     /** Abertura do primeiro pregao ao fechamento do ultimo; extremos com a data. */
