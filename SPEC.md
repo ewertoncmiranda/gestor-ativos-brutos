@@ -570,3 +570,20 @@ A sequência global, contratos de banco e regras de exclusividade entre agentes 
 | CARGA-GES-1 | Leitura das cargas | `GET /cargas?limite=&status=&desde=`, `GET /cargas/{id}` (execução + etapas + arquivos de `etl_execucao`), `GET /cargas/ultimas` (`vw_carga_ultima`) | CARGA-INFRA-1 | Somente leitura, sem efeito colateral; JSON camelCase com `metricas`, `alertas` e `erros` já desserializados; base sem a V44 responde 503 com motivo, sem erro 500; testes de contrato | IMPLEMENTADO |
 | CARGA-GES-2 | Disparo repassado ao ETL | `POST /cargas` → `ETL_URL/cargas` com `solicitada_por=PAINEL` (snake_case, contrato do ETL) e `ETL_TOKEN` | CARGA-GES-1, CARGA-ETL-3, DEC-CARGA-1 | Repassa 202/409 sem reinterpretar; ETL fora do ar = 503 com mensagem; timeout curto (o ETL responde na hora); valida `tipo`, `anos` (2016–ano atual), `simbolos` e `etapas` do catálogo antes de repassar | IMPLEMENTADO |
 | CARGA-GES-3 | Saúde dos dados pela carga | `ServicoSaudeDados` | CARGA-GES-1 | Atualidade de cada fonte vem de `vw_carga_ultima` (último sucesso e última tentativa); somem as instruções antigas de CLI (`etl-fundamentos-cvm --ano`, `--ttm`, `--comunicados`, `--cotahist`), trocadas por "rodar carga" | IMPLEMENTADO |
+
+## Plano MERC: panorama do mercado para o carrossel da Início (2026-10-20)
+
+**Status:** PLANEJADO · **Contexto, regras de cálculo, contrato JSON e ordem:** `infra-b3-ecossytem/SPEC.md`, Plano MERC. Rótulo `MERC-GES-*`, reservado. O gestor só lê `cotacao_b3_diaria`, `ativo_liquidez_diaria`, `cvm_empresa`, `setor_grupo`, `evento_corporativo` e `indice_macro`; nada é gravado.
+
+### Tarefas desta aplicação
+
+| ID | Tarefa | Endpoint/arquivos | Depende | Aceite | Status |
+|---|---|---|---|---|---|
+| MERC-GES-1 | Panorama: setores × empresas, altas/quedas, liquidez, negociação e amplitude | `GET /mercado/panorama?janela=1d\|5d\|21d\|ano` (padrão `5d`); novos `MercadoController`, `ServicoPanoramaMercado`, `RepositorioPanoramaMercado` (JdbcTemplate), `PanoramaMercadoDTO` | contrato do hub | Blocos `setores` (mediana, coesão, selo, `melhores[10]`/`piores[10]` por desvio), `altas[10]`, `quedas[10]`, `liquidez.maiores/menores[10]`, `negociacao.maiores/menores[10]`, `amplitude` exatamente como no contrato; universos "líquidos" e "presença ≥ 80%", exclusão de ativo com evento corporativo não ajustado, setor com menos de 3 empresas em "Outros", desempate por volume e símbolo; cache por `(janela, dataPregao)`; bloco sem dado vem vazio e listado em `indisponivel` (200); `janela` inválida = 400; testes do serviço com dados montados à mão (mediana, coesão, desvio, universos, desempate, limite de 10) e do contrato do controller | PLANEJADO |
+| MERC-GES-2 | Cards de volume fora do normal, macro e eventos | mesmo endpoint: blocos `volumeAnormal[10]`, `macro`, `eventos[10]` | MERC-GES-1 | `volumeAnormal` = volume do último pregão ÷ média 21d, só líquidos; `macro` com Selic, CDI acumulado no período, dólar e IPCA 12 meses de `indice_macro`; `eventos` = 10 mais recentes de `evento_corporativo`; bloco sem dado em `indisponivel`; testes | PLANEJADO |
+
+### Notas de implementação
+
+- Calcular em SQL o que for agregação por pregão (fechamentos dos extremos, soma de volume, contagem de negócios); mediana, coesão e desvio no serviço Java, onde são testáveis sem banco.
+- O "último pregão" é o `MAX(data_pregao)` de `cotacao_b3_diaria`; a data inicial é o N-ésimo pregão anterior (`1d` = 1, `5d` = 5, `21d` = 21, `ano` = primeiro pregão do ano).
+- Nome da empresa: o mesmo usado em `/base/ativos` (não duplicar a regra).
