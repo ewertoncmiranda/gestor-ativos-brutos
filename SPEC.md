@@ -570,3 +570,77 @@ A sequência global, contratos de banco e regras de exclusividade entre agentes 
 | CARGA-GES-1 | Leitura das cargas | `GET /cargas?limite=&status=&desde=`, `GET /cargas/{id}` (execução + etapas + arquivos de `etl_execucao`), `GET /cargas/ultimas` (`vw_carga_ultima`) | CARGA-INFRA-1 | Somente leitura, sem efeito colateral; JSON camelCase com `metricas`, `alertas` e `erros` já desserializados; base sem a V44 responde 503 com motivo, sem erro 500; testes de contrato | IMPLEMENTADO |
 | CARGA-GES-2 | Disparo repassado ao ETL | `POST /cargas` → `ETL_URL/cargas` com `solicitada_por=PAINEL` (snake_case, contrato do ETL) e `ETL_TOKEN` | CARGA-GES-1, CARGA-ETL-3, DEC-CARGA-1 | Repassa 202/409 sem reinterpretar; ETL fora do ar = 503 com mensagem; timeout curto (o ETL responde na hora); valida `tipo`, `anos` (2016–ano atual), `simbolos` e `etapas` do catálogo antes de repassar | IMPLEMENTADO |
 | CARGA-GES-3 | Saúde dos dados pela carga | `ServicoSaudeDados` | CARGA-GES-1 | Atualidade de cada fonte vem de `vw_carga_ultima` (último sucesso e última tentativa); somem as instruções antigas de CLI (`etl-fundamentos-cvm --ano`, `--ttm`, `--comunicados`, `--cotahist`), trocadas por "rodar carga" | IMPLEMENTADO |
+
+---
+
+## Plano MACRO: Banco Central (SGS e Focus) como custo de oportunidade (2026-10-20)
+
+**Status:** PLANEJADO · Rótulo `MACRO-GES-*`, reservado; o painel tem `MACRO-PAI-*` na SPEC dele. Fontes abertas, sem cadastro nem chave. Sem migration: tudo cabe em `indice_macro` (`codigo_serie`, `data`, `valor`). Códigos conferidos com chamada direta em 2026-10-20: SGS 13522 (IPCA acumulado em 12 meses, 4,58 em 09/2026), 21619 (euro PTAX venda) e a API OData do Focus (`olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/ExpectativasMercadoAnuais`). O SGS 28655 **não** é o IGP-M em 12 meses; esse acumulado é calculado a partir da série mensal 189.
+
+### Tarefas desta aplicação
+
+| ID | Tarefa | Arquivos | Depende | Aceite | Status |
+|---|---|---|---|---|---|
+| MACRO-GES-1 | Séries SGS novas | `service/ServicoAtualizacaoIndicesMacro.java` (mapa `SERIES`); teste em `ServicoAtualizacaoIndicesMacroTest` | — | `IPCA_12M` (13522) e `EURO` (21619) entram no ciclo e no `completarHistorico` (5 anos); nenhum código entra sem conferência direta na API; séries atuais intactas | PLANEJADO |
+| MACRO-GES-2 | Expectativas do Focus | novo `external/http/ClienteFocusBcb.java`; novo `service/ServicoAtualizacaoFocus.java`; teste com o cliente mockado | — | Mediana de `Selic` e `IPCA` para o ano corrente e o seguinte, gravada como `FOCUS_SELIC_{ano}` e `FOCUS_IPCA_{ano}` com a data da pesquisa; idempotente por (código, data); falha do BCB só registra log, sem derrubar o ciclo | PLANEJADO |
+| MACRO-GES-3 | Resumo de decisão | `GET /indices-macro/painel` em `IndiceMacroController`; novo `service/ServicoPainelMacro.java`; DTO `PainelMacroDTO` | MACRO-GES-1, MACRO-GES-2 | Para cada série: atual, variação em 1, 3 e 12 meses; IGP-M em 12 meses composto a partir da 189. **Juro real** = (1 + Selic meta) / (1 + Focus IPCA 12 meses à frente) − 1. **Ciclo da Selic**: ALTA, QUEDA ou ESTAVEL pela meta contra 90 dias antes. **Barreira de compra** = earnings yield mínimo igual à Selic; **earnings yield mediano da base** e lista de ativos acima da barreira (símbolo, earnings yield), lidos do repositório de análise existente. Cada bloco tem uma `leitura` em texto determinístico. Série ausente vira `null` com motivo, sem erro 500 | PLANEJADO |
+| MACRO-GES-4 | Recorte por período | `GET /indices-macro/{codigo}?desde=` em `IndiceMacroController` e `RepositorioIndiceMacro` | — | Sem `desde`, a resposta é a mesma de hoje; com `desde` (ISO date), só os pontos a partir da data; data inválida = 400 | PLANEJADO |
+
+### Ordem
+
+| Onda | Tarefas | Observação |
+|---|---|---|
+| 0 | MACRO-GES-1, MACRO-GES-2, MACRO-GES-4 | Arquivos distintos |
+| 1 | MACRO-GES-3 | Usa as séries novas |
+
+Próximo passo, fora deste plano: ajuste de juros no Graham (`V = LPA × (8,5 + 2g) × 4,4 / Y`) usando `FOCUS_SELIC` ou a NTN-B (Tesouro Transparente, plano próprio).
+
+---
+
+## Plano consolidado CONS: MACRO + FONTES + MICRO enxuto, migration única (2026-10-20)
+
+**Status:** PLANEJADO · **Rótulos:** `FONTES-GES-*`, `MICRO-GES-*`, `MACRO-GES-*` · **Contrato, ondas e dependências entre serviços:** `infra-b3-ecossytem/SPEC.md`, Plano consolidado CONS. Escopo gestor. As tarefas `MACRO-GES-*` estão no Plano MACRO acima e fazem parte deste plano. Fontes públicas sem cadastro nem chave. Uma única migration nova (V45, CONS-INFRA-1). Regra de independência: cada tarefa tem posse exclusiva dos arquivos listados; arquivos compartilhados têm um único dono.
+
+### Tarefas desta aplicação
+| ID | Tarefa | Arquivos (posse) | Depende | Aceite |
+|---|---|---|---|---|
+| **MACRO-GES-1** | Séries SGS novas | `ServicoAtualizacaoIndicesMacro.java` | — **independente** | IPCA_12M (13522) e EURO (21619), já conferidos |
+| **MACRO-GES-2** | Focus | `ClienteFocusBcb`, `ServicoAtualizacaoFocus` | — **independente** | Medianas de Selic e IPCA |
+| **MACRO-GES-4** | Filtro `?desde=` | `IndiceMacroController` (dono), `RepositorioIndiceMacro` | — **independente** | Compatível com a chamada atual |
+| **MACRO-GES-3** | `/indices-macro/painel` | `ServicoPainelMacro` + rota no `IndiceMacroController` | MACRO-GES-1, 2, 4 | Juro real, ciclo da Selic, barreira de compra e ativos acima dela |
+| **MICRO-GES-1** | Velas com marca ex e preço médio, opções com ofertas | `PregoesDTO`, `OpcaoB3DTO` e repositórios | — **independente** (colunas já existem) | Campos opcionais; o contrato atual não quebra |
+| **FONTES-GES-1** | Prêmio de risco e curva real | `ServicoPremioRisco`, rotas `/ativos/{s}/premio-risco` e `/indices-macro/curva-real` (controller próprio) | FONTES-ETL-8 | Earnings yield − NTN-B, com leitura |
+| **FONTES-GES-2** | Indicadores de banco | `/ativos/{s}/banco` | FONTES-ETL-8 | Basileia, inadimplência e ROE |
+| **FONTES-GES-3** | Insiders e recompras | `/ativos/{s}/insiders`, `/ativos/{s}/recompras` | FONTES-ETL-8 | Compra líquida em 3, 6 e 12 meses |
+| **FONTES-GES-4** | Confiabilidade | `/ativos/{s}/confiabilidade` | FONTES-ETL-8 | Selos de cadastro, auditor, dividendo sustentável e fundos |
+| **MICRO-GES-2** | Datas ex | `/ativos/{s}/datas-ex` | FONTES-ETL-8 | Calendário com valor implícito e valor declarado |
+| ~~FONTES-GES-5~~ | **SUBSTITUÍDA** por `SINAIS-INS-1..7` na SPEC do gerar-insights: o score e o backtest ficam lá, o gestor só lê o placar | — | — | Sinais novos só entram no score se vencerem o backtest (LAC-INS-8/9) |
+
+### Ondas de execução
+| Onda | Tarefas em paralelo, sem colisão | Por que podem rodar juntas |
+|---|---|---|
+| **0** | CONS-SPEC-1, FONTES-ETL-1, 2, 5, 6, MICRO-ETL-1, 2, MACRO-GES-1, 2, 4, MICRO-GES-1, MACRO-PAI-2, CONS-PAI-1 | Não tocam no banco nem em arquivo compartilhado |
+| **1** | **CONS-INFRA-1 (V45, execução única)**, FONTES-ETL-3, 4, 7, MACRO-GES-3, MICRO-PAI-1, MICRO-PAI-2 | A V45 só espera o inventário. Os leitores da onda 1 são arquivos próprios |
+| **2** | FONTES-ETL-8, CONS-INFRA-2 | O ETL-8 é o único que mexe no catálogo |
+| **3** | CONS-INFRA-3 (backfill), FONTES-GES-1..4, MICRO-GES-2 | Precisam das tabelas com dados |
+| **4** | MACRO-PAI-1/3 + FONTES-PAI-5, FONTES-PAI-1..4, MICRO-PAI-3 | Uma tarefa por arquivo |
+| **5** | MACRO-PAI-4 | Textos por último. O score pelo backtest saiu daqui: ver `SINAIS-INS-*` no gerar-insights |
+
+### Status de execução (2026-10-21)
+
+Resultado de cada tarefa executada: estado, branch e observação. Os testes de cada branch passam; falta a integração dos PRs (conflitos aditivos esperados em `ficha360Api.js` e `manifesto.js` no painel).
+
+| ID | Estado | Branch | Observação |
+|---|---|---|---|
+| MACRO-GES-1 | IMPLEMENTADO (2026-10-21) | `feature-cons-macro-ges` | docs/macro |
+| MACRO-GES-2 | IMPLEMENTADO (2026-10-21) | `feature-cons-macro-ges` | docs/macro |
+| MACRO-GES-3 | IMPLEMENTADO (2026-10-21) | `feature-cons-macro-ges` | docs/macro |
+| MACRO-GES-4 | IMPLEMENTADO (2026-10-21) | `feature-cons-macro-ges` | docs/macro |
+| FONTES-GES-1 | IMPLEMENTADO (2026-10-21) | `feature-cons-ges-1` | prêmio de risco e curva real |
+| FONTES-GES-2 | IMPLEMENTADO (2026-10-21) | `feature-cons-ges-2` | banco; limiares revisáveis; V1..V45 completa não exercitada na base de teste |
+| FONTES-GES-3 | IMPLEMENTADO (2026-10-21) | `feature-cons-ges-3` | insiders e recompras (fato_contabil BPP) |
+| FONTES-GES-4 | IMPLEMENTADO (2026-10-21) | `feature-cons-ges-4` | selos de confiabilidade |
+| FONTES-GES-5 | SUBSTITUÍDA | `—` | ver SINAIS-INS-1..7 no gerar-insights |
+| FONTES-GES-6 | PLANEJADA | `—` | campo de confiabilidade na listagem `/painel/ativos` para o filtro da tabela de ativos |
+| MICRO-GES-1 | IMPLEMENTADO pelo Codex (2026-10-21) | `feature-cons-micro-ges-1` | velas e opções com preço médio, ofertas e marca ex |
+| MICRO-GES-2 | IMPLEMENTADO (2026-10-21) | `feature-cons-ges-5` | datas ex; só o primeiro pregão da sequência com a marca |
