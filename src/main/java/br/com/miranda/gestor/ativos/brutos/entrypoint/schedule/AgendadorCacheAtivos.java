@@ -1,5 +1,6 @@
 package br.com.miranda.gestor.ativos.brutos.entrypoint.schedule;
 
+import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoFocus;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoIndicadoresIbge;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoIndicesMacro;
 import br.com.miranda.gestor.ativos.brutos.service.ServicoAtualizacaoProventos;
@@ -41,6 +42,7 @@ public class AgendadorCacheAtivos {
     private final ServicoAtualizacaoIndicesMacro servicoAtualizacaoIndicesMacro;
     private final ServicoAtualizacaoIndicadoresIbge servicoAtualizacaoIndicadoresIbge;
     private final ServicoAtualizacaoProventos servicoAtualizacaoProventos;
+    private final ServicoAtualizacaoFocus servicoAtualizacaoFocus;
 
     @Scheduled(cron = CRON_INTRADIARIO, zone = ZONA)
     public void atualizarCotacoes() {
@@ -75,6 +77,12 @@ public class AgendadorCacheAtivos {
     @Scheduled(cron = CRON_MANHA, zone = ZONA)
     public void atualizarProventos() {
         executar("proventos", servicoAtualizacaoProventos::atualizarProventos);
+    }
+
+    /** O Focus sai as segundas; rodar todo dia util so regrava a ultima pesquisa. */
+    @Scheduled(cron = CRON_MANHA, zone = ZONA)
+    public void atualizarFocus() {
+        executar("expectativas Focus", servicoAtualizacaoFocus::atualizar);
     }
 
     private static void executar(String rotina, Runnable acao) {
