@@ -11,6 +11,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -29,8 +33,8 @@ import java.util.stream.Collectors;
  * Panorama do mercado para o carrossel da Inicio (Plano MERC, MERC-GES-1).
  * O repositorio agrega por pregao; aqui ficam os universos, a variacao, a
  * mediana e a coesao do setor, o desvio, a ordenacao com desempate e o
- * corte em 10. Resultado em cache por (janela, dataPregao): so muda uma vez
- * por pregao.
+ * corte em 10. Resultado em cache por (janela, dataPregao), com validade de 30 segundos
+ * para incorporar atualizações da carga no mesmo pregão.
  *
  * <p>Periodo de N pregoes: os N ultimos pregoes, de {@code dataInicial} ate
  * {@code dataPregao}. A variacao compara o fechamento de {@code dataPregao}
@@ -103,10 +107,19 @@ public class ServicoPanoramaMercado {
     }
 
     private final RepositorioPanoramaMercado repositorio;
-    private final Map<String, PanoramaMercadoDTO.Panorama> cache = new ConcurrentHashMap<>();
+    static final Duration VALIDADE_CACHE = Duration.ofSeconds(30);
+    private record EntradaCache(PanoramaMercadoDTO.Panorama panorama, Instant expiraEm) {}
+    private final Clock relogio;
+    private final Map<String, EntradaCache> cache = new ConcurrentHashMap<>();
 
+    @Autowired
     public ServicoPanoramaMercado(RepositorioPanoramaMercado repositorio) {
+        this(repositorio, Clock.systemUTC());
+    }
+
+    ServicoPanoramaMercado(RepositorioPanoramaMercado repositorio, Clock relogio) {
         this.repositorio = repositorio;
+        this.relogio = relogio;
     }
 
     public PanoramaMercadoDTO.Panorama panorama(String janelaPedida) {
@@ -115,19 +128,21 @@ public class ServicoPanoramaMercado {
         if (ultimo.isEmpty()) {
             return semDado(janela);
         }
-        LocalDate dataPregao = ultimo.get();
+        // Verificada antes do cache: a conclusão da liquidez muda a data atendida
+        // imediatamente, sem misturar métricas antigas com preços novos.
+        LocalDate dataPregao = repositorio.ultimoPregaoComLiquidez(ultimo.get()).orElse(ultimo.get());
         String chave = janela.codigo + "|" + dataPregao;
-        PanoramaMercadoDTO.Panorama emCache = cache.get(chave);
-        if (emCache != null) {
-            return emCache;
+        EntradaCache emCache = cache.get(chave);
+        if (emCache != null && relogio.instant().isBefore(emCache.expiraEm())) {
+            return emCache.panorama();
         }
+        cache.remove(chave);
         PanoramaMercadoDTO.Panorama panorama = calcular(janela, periodo(janela, dataPregao));
-        // Nao guarda se tudo ficou indisponivel: indica que o ETL do pregao
-        // ainda nao rodou (ativo_liquidez_diaria vazio). Enquanto houver ao
-        // menos um bloco calculado, a resposta e valida para cache.
-        if (!panorama.indisponivel().containsAll(BLOCOS)) {
+        // Macro/eventos podem existir antes da liquidez. Isso não torna uma
+        // resposta sem universo de ações apta a cache.
+        if (panorama.universo().presenca() > 0) {
             cache.keySet().removeIf(k -> !k.endsWith("|" + dataPregao));
-            cache.put(chave, panorama);
+            cache.put(chave, new EntradaCache(panorama, relogio.instant().plus(VALIDADE_CACHE)));
         }
         return panorama;
     }
