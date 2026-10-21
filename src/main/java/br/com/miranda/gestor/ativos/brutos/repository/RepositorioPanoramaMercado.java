@@ -71,6 +71,17 @@ public class RepositorioPanoramaMercado {
         return Optional.ofNullable(data).map(Date::toLocalDate);
     }
 
+    /** Última data comum a preços e liquidez; a carga de liquidez confirma cada pregão em uma transação. */
+    public Optional<LocalDate> ultimoPregaoComLiquidez(LocalDate ate) {
+        Date data = jdbc.queryForObject("""
+                SELECT MAX(l.data_pregao) FROM ativo_liquidez_diaria l
+                WHERE l.data_pregao <= ?
+                  AND EXISTS (SELECT 1 FROM cotacao_b3_diaria c
+                              WHERE c.data_pregao = l.data_pregao AND c.simbolo = l.simbolo)
+                """, Date.class, Date.valueOf(ate));
+        return Optional.ofNullable(data).map(Date::toLocalDate);
+    }
+
     /** Os {@code quantidade} pregoes mais recentes ate {@code ate} (inclusive), do mais novo ao mais antigo. */
     public List<LocalDate> pregoesAte(LocalDate ate, int quantidade) {
         return jdbc.query("""
@@ -220,7 +231,7 @@ public class RepositorioPanoramaMercado {
                 "SELECT SUM(valor) FROM indice_macro WHERE codigo_serie = 'CDI' AND data BETWEEN ? AND ?",
                 (rs, i) -> rs.getBigDecimal(1),
                 Date.valueOf(dataInicial), Date.valueOf(dataPregao))
-                .stream().findFirst().orElse(null);
+                .stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
         Double cdiPeriodo = (cdiSoma == null) ? null : cdiSoma.doubleValue() / 100.0;
 
         Double dolar = ultimoValor("DOLAR", dataPregao);
@@ -233,7 +244,7 @@ public class RepositorioPanoramaMercado {
                 """,
                 (rs, i) -> rs.getBigDecimal(1),
                 Date.valueOf(dataPregao))
-                .stream().findFirst().orElse(null);
+                .stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
         Double ipca12m = (ipca == null) ? null : ipca.doubleValue();
 
         return new LinhaMacro(selic, cdiPeriodo, dolar, ipca12m);
@@ -244,7 +255,7 @@ public class RepositorioPanoramaMercado {
                 "SELECT valor FROM indice_macro WHERE codigo_serie = ? AND data <= ? ORDER BY data DESC LIMIT 1",
                 (rs, i) -> rs.getBigDecimal(1),
                 codigoSerie, Date.valueOf(ate))
-                .stream().findFirst()
+                .stream().filter(java.util.Objects::nonNull).findFirst()
                 .map(v -> v == null ? null : v.doubleValue())
                 .orElse(null);
     }
