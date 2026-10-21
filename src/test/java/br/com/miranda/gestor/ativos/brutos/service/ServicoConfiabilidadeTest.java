@@ -12,6 +12,7 @@ import br.com.miranda.gestor.ativos.brutos.repository.RepositorioConfiabilidade.
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioConfiabilidade.Proventos;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -31,6 +32,17 @@ class ServicoConfiabilidadeTest {
     private static final LocalDate HOJE = LocalDate.of(2026, 10, 20);
     private RepositorioConfiabilidade repo;
     private ServicoConfiabilidade servico;
+
+    @Test
+    void springCriaServicoSemConstrutorPadraoNemBeanDeClock() {
+        try (var contexto = new AnnotationConfigApplicationContext()) {
+            contexto.registerBean(RepositorioConfiabilidade.class, () -> repo);
+            contexto.register(ServicoConfiabilidade.class);
+            contexto.refresh();
+            assertNotNull(contexto.getBean(ServicoConfiabilidade.class));
+            verifyNoInteractions(repo);
+        }
+    }
 
     @BeforeEach
     void setUp() {

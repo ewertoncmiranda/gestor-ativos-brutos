@@ -11,6 +11,7 @@ import br.com.miranda.gestor.ativos.brutos.repository.RepositorioConfiabilidade.
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioConfiabilidade.Divida;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioConfiabilidade.MovimentoFundos;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioConfiabilidade.Proventos;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,7 @@ public class ServicoConfiabilidade {
     private final RepositorioConfiabilidade repo;
     private final Clock relogio;
 
+    @Autowired
     public ServicoConfiabilidade(RepositorioConfiabilidade repo) {
         this(repo, Clock.systemDefaultZone());
     }
