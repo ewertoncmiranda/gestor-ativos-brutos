@@ -183,7 +183,7 @@ public class RepositorioPanoramaMercado {
                        WHERE data_pregao BETWEEN ? AND ?
                        GROUP BY simbolo) m ON m.simbolo = c.simbolo
                 WHERE c.data_pregao = ?
-                  AND l.volume_medio_63d >= 1000000
+                  AND l.volume_financeiro_medio_63d >= 1000000
                   AND l.presenca_63d >= 0.80
                 """,
                 (rs, i) -> {
