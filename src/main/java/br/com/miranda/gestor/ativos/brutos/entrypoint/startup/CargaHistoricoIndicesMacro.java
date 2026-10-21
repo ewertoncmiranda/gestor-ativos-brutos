@@ -40,7 +40,7 @@ public class CargaHistoricoIndicesMacro implements ApplicationRunner {
             // IPCA mensal: a regra v2 usa o IPCA de 12 meses para o crescimento
             // nominal do Graham. Selic meta: o Y do Graham da regra oficial
             // (gerar-insights DEC-02), vigente em cada data do backtest.
-            for (String serie : java.util.List.of("CDI", "IPCA", "SELIC")) {
+            for (String serie : java.util.List.of("CDI", "IPCA", "SELIC", "IPCA_12M", "EURO")) {
                 try {
                     servicoIndicesMacro.completarHistorico(serie, desde, LocalDate.now());
                 } catch (Exception e) {

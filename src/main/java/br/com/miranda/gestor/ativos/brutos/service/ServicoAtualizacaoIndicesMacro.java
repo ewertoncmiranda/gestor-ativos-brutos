@@ -39,7 +39,13 @@ public class ServicoAtualizacaoIndicesMacro {
             "IGPM", 189,
             "DOLAR", 1,
             "IBCBR", 24363,
-            "SELIC_DIARIA", 11
+            "SELIC_DIARIA", 11,
+            // MACRO-GES-1, conferidos ao vivo em 2026-10-20: 13522 devolveu
+            // 4.58 (IPCA 12 meses ate 09/2026) e 21619 devolveu 5.6317 (euro).
+            // O IGP-M 12 meses NAO tem codigo confiavel (28655 nao e ele):
+            // o acumulado sai da serie mensal 189 no painel.
+            "IPCA_12M", 13522,
+            "EURO", 21619
     );
     private static final int PONTOS_POR_CICLO = 10;
     // 10 pontos diarios ~ 2 semanas corridas; alem disso o ciclo nao fecha o buraco.
