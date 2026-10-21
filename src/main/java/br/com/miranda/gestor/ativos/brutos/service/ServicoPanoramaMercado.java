@@ -4,6 +4,9 @@ import br.com.miranda.gestor.ativos.brutos.exceptions.ExcecaoAplicacao;
 import br.com.miranda.gestor.ativos.brutos.external.dto.PanoramaMercadoDTO;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado.LinhaAtivo;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado.LinhaEvento;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado.LinhaMacro;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado.LinhaVolumeAnormal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
@@ -17,7 +20,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -61,8 +63,7 @@ public class ServicoPanoramaMercado {
     /** Ordem dos blocos em indisponivel. */
     static final List<String> BLOCOS = List.of(SETORES, ALTAS, QUEDAS, LIQUIDEZ, NEGOCIACAO, AMPLITUDE,
             VOLUME_ANORMAL, MACRO, EVENTOS);
-    /** Blocos da MERC-GES-2: por enquanto sempre indisponiveis. */
-    static final Set<String> BLOCOS_SEGUNDA_ONDA = Set.of(VOLUME_ANORMAL, MACRO, EVENTOS);
+    // BLOCOS_SEGUNDA_ONDA removido: todos os blocos sao calculados agora (MERC-GES-2).
 
     /** Catalogo de janelas do contrato. */
     enum Janela {
@@ -121,9 +122,10 @@ public class ServicoPanoramaMercado {
             return emCache;
         }
         PanoramaMercadoDTO.Panorama panorama = calcular(janela, periodo(janela, dataPregao));
-        // So guarda resposta completa: se a liquidez ainda nao foi calculada, a
-        // proxima chamada do mesmo pregao tenta de novo.
-        if (BLOCOS_SEGUNDA_ONDA.containsAll(panorama.indisponivel())) {
+        // Nao guarda se tudo ficou indisponivel: indica que o ETL do pregao
+        // ainda nao rodou (ativo_liquidez_diaria vazio). Enquanto houver ao
+        // menos um bloco calculado, a resposta e valida para cache.
+        if (!panorama.indisponivel().containsAll(BLOCOS)) {
             cache.keySet().removeIf(k -> !k.endsWith("|" + dataPregao));
             cache.put(chave, panorama);
         }
@@ -168,6 +170,46 @@ public class ServicoPanoramaMercado {
         PanoramaMercadoDTO.Negociacao negociacao = negociacao(presenca);
         PanoramaMercadoDTO.Amplitude amplitude = amplitude(comVariacao);
 
+        // --- MERC-GES-2: volume anormal, macro, eventos ----------------------
+
+        List<PanoramaMercadoDTO.VolumeAnormal> volumeAnormal;
+        try {
+            List<LinhaVolumeAnormal> linhasVol =
+                    repositorio.volumeAnormal(periodo.dataPregao(), periodo.inicioMedia21());
+            volumeAnormal = volumeAnormal(linhasVol);
+        } catch (DataAccessException e) {
+            log.warn("(PANORAMA-MERCADO)-Falha ao ler volume anormal do pregao {}: {}",
+                    periodo.dataPregao(), e.getMessage());
+            volumeAnormal = List.of();
+        }
+
+        PanoramaMercadoDTO.Macro macro;
+        try {
+            LinhaMacro linhaMacro = repositorio.macro(periodo.dataPregao(), periodo.dataInicial());
+            macro = linhaMacro == null ? macroVazio()
+                    : new PanoramaMercadoDTO.Macro(
+                            linhaMacro.selic(), linhaMacro.cdiPeriodo(),
+                            linhaMacro.dolar(), linhaMacro.ipca12m());
+        } catch (DataAccessException e) {
+            log.warn("(PANORAMA-MERCADO)-Falha ao ler macro do pregao {}: {}",
+                    periodo.dataPregao(), e.getMessage());
+            macro = macroVazio();
+        }
+
+        List<PanoramaMercadoDTO.Evento> eventos;
+        try {
+            List<LinhaEvento> linhasEv = repositorio.eventos(periodo.dataPregao());
+            eventos = linhasEv.stream()
+                    .map(l -> new PanoramaMercadoDTO.Evento(l.simbolo(), l.tipo(), l.data(), l.fator()))
+                    .toList();
+        } catch (DataAccessException e) {
+            log.warn("(PANORAMA-MERCADO)-Falha ao ler eventos do pregao {}: {}",
+                    periodo.dataPregao(), e.getMessage());
+            eventos = List.of();
+        }
+
+        // --- indisponivel ----------------------------------------------------
+
         List<String> indisponivel = new ArrayList<>();
         for (String bloco : BLOCOS) {
             boolean vazio = switch (bloco) {
@@ -177,13 +219,16 @@ public class ServicoPanoramaMercado {
                 case LIQUIDEZ -> liquidez.maiores().isEmpty();
                 case NEGOCIACAO -> negociacao.maiores().isEmpty();
                 case AMPLITUDE -> amplitude.subiram() == null;
+                case VOLUME_ANORMAL -> volumeAnormal.isEmpty();
+                case MACRO -> macro.selic() == null;
+                case EVENTOS -> eventos.isEmpty();
                 default -> true;
             };
             if (vazio) indisponivel.add(bloco);
         }
         return new PanoramaMercadoDTO.Panorama(janela.codigo, periodo.dataPregao(), periodo.dataInicial(),
                 new PanoramaMercadoDTO.Universo(liquidos.size(), presenca.size()), setores, altas, quedas,
-                liquidez, negociacao, amplitude, List.of(), macroVazio(), List.of(), List.copyOf(indisponivel));
+                liquidez, negociacao, amplitude, volumeAnormal, macro, eventos, List.copyOf(indisponivel));
     }
 
     private static Ativo classificar(LinhaAtivo l) {
@@ -367,6 +412,31 @@ public class ServicoPanoramaMercado {
                         .thenComparing(Ativo::simbolo))
                 .limit(LIMITE)
                 .toList();
+    }
+
+    /**
+     * Ordena por razao (volumePregao/media21) decrescente, desempata por
+     * volumePregao decrescente e simbolo, corta em 10 e monta os DTOs com
+     * posicao a partir de 1. Linhas com media21 == 0 sao ignoradas.
+     */
+    private static List<PanoramaMercadoDTO.VolumeAnormal> volumeAnormal(List<LinhaVolumeAnormal> linhas) {
+        Comparator<LinhaVolumeAnormal> ord =
+                Comparator.comparingDouble((LinhaVolumeAnormal l) -> l.volumePregao() / l.media21());
+        List<LinhaVolumeAnormal> top = linhas.stream()
+                .filter(l -> l.media21() > 0)
+                .sorted(ord.reversed()
+                        .thenComparing(
+                                Comparator.comparingDouble(LinhaVolumeAnormal::volumePregao).reversed())
+                        .thenComparing(LinhaVolumeAnormal::simbolo))
+                .limit(LIMITE)
+                .toList();
+        List<PanoramaMercadoDTO.VolumeAnormal> itens = new ArrayList<>();
+        for (int i = 0; i < top.size(); i++) {
+            LinhaVolumeAnormal l = top.get(i);
+            itens.add(new PanoramaMercadoDTO.VolumeAnormal(
+                    i + 1, l.simbolo(), l.volumePregao() / l.media21(), l.volumePregao()));
+        }
+        return List.copyOf(itens);
     }
 
     private static PanoramaMercadoDTO.Macro macroVazio() {

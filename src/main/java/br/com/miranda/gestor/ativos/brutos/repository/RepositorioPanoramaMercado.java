@@ -143,4 +143,133 @@ public class RepositorioPanoramaMercado {
                              double volumePeriodo, long negociosPeriodo, Double media21, boolean eventoPeriodo,
                              boolean evento21) {
     }
+
+    /** Volume do pregao e media de 21 pregoes para calcular volume anormal (MERC-GES-2). */
+    public record LinhaVolumeAnormal(String simbolo, double volumePregao, double media21) {
+    }
+
+    /**
+     * Indicadores macro ja convertidos para fracao onde aplicavel: selic e
+     * cdiPeriodo como fracao anual/periodo (0.15 = 15%), dolar em BRL,
+     * ipca12m como fracao do produto composto dos ultimos 12 meses mensais
+     * (MERC-GES-2).
+     */
+    public record LinhaMacro(Double selic, Double cdiPeriodo, Double dolar, Double ipca12m) {
+    }
+
+    /** Evento corporativo recente (MERC-GES-2). */
+    public record LinhaEvento(String simbolo, String tipo, LocalDate data, String fator) {
+    }
+
+    // -------------------------------------------------------------------------
+    // MERC-GES-2: volume anormal, macro, eventos
+    // -------------------------------------------------------------------------
+
+    /**
+     * Volume financeiro do pregao e media dos 21 pregoes ({@code dataInicial21}
+     * ate {@code dataPregao}) para cada ativo do universo liquido. A razao
+     * (volumePregao / media21) e calculada no servico.
+     */
+    public List<LinhaVolumeAnormal> volumeAnormal(LocalDate dataPregao, LocalDate dataInicial21) {
+        return jdbc.query("""
+                SELECT c.simbolo,
+                       c.volume_financeiro AS volume_pregao,
+                       m.media_21
+                FROM cotacao_b3_diaria c
+                JOIN ativo_liquidez_diaria l
+                     ON l.simbolo = c.simbolo AND l.data_pregao = ?
+                JOIN (SELECT simbolo, AVG(volume_financeiro) AS media_21
+                        FROM cotacao_b3_diaria
+                       WHERE data_pregao BETWEEN ? AND ?
+                       GROUP BY simbolo) m ON m.simbolo = c.simbolo
+                WHERE c.data_pregao = ?
+                  AND l.volume_medio_63d >= 1000000
+                  AND l.presenca_63d >= 0.80
+                """,
+                (rs, i) -> {
+                    BigDecimal vol = rs.getBigDecimal("volume_pregao");
+                    BigDecimal med = rs.getBigDecimal("media_21");
+                    return new LinhaVolumeAnormal(
+                            rs.getString("simbolo"),
+                            vol == null ? 0.0 : vol.doubleValue(),
+                            med == null ? 0.0 : med.doubleValue());
+                },
+                Date.valueOf(dataPregao),
+                Date.valueOf(dataInicial21), Date.valueOf(dataPregao),
+                Date.valueOf(dataPregao));
+    }
+
+    /**
+     * Indicadores macroeconomicos para o bloco macro do panorama.
+     *
+     * <ul>
+     *   <li>SELIC: ultimo valor ate {@code dataPregao}, convertido para fracao
+     *       (15.0 -> 0.15)</li>
+     *   <li>CDI acumulado: soma das taxas diarias de {@code dataInicial} ate
+     *       {@code dataPregao}, convertida para fracao</li>
+     *   <li>Dolar: ultimo valor ate {@code dataPregao} em BRL</li>
+     *   <li>IPCA 12m: produto composto dos ultimos 12 pontos mensais ate
+     *       {@code dataPregao}, retornado como fracao</li>
+     * </ul>
+     */
+    public LinhaMacro macro(LocalDate dataPregao, LocalDate dataInicial) {
+        Double selicRaw = ultimoValor("SELIC", dataPregao);
+        Double selic = selicRaw == null ? null : selicRaw / 100.0;
+
+        BigDecimal cdiSoma = jdbc.query(
+                "SELECT SUM(valor) FROM indice_macro WHERE codigo_serie = 'CDI' AND data BETWEEN ? AND ?",
+                (rs, i) -> rs.getBigDecimal(1),
+                Date.valueOf(dataInicial), Date.valueOf(dataPregao))
+                .stream().findFirst().orElse(null);
+        Double cdiPeriodo = (cdiSoma == null) ? null : cdiSoma.doubleValue() / 100.0;
+
+        Double dolar = ultimoValor("DOLAR", dataPregao);
+
+        BigDecimal ipca = jdbc.query("""
+                SELECT EXP(SUM(LOG(1 + valor / 100))) - 1
+                FROM (SELECT valor FROM indice_macro
+                       WHERE codigo_serie = 'IPCA' AND data <= ?
+                       ORDER BY data DESC LIMIT 12) sub
+                """,
+                (rs, i) -> rs.getBigDecimal(1),
+                Date.valueOf(dataPregao))
+                .stream().findFirst().orElse(null);
+        Double ipca12m = (ipca == null) ? null : ipca.doubleValue();
+
+        return new LinhaMacro(selic, cdiPeriodo, dolar, ipca12m);
+    }
+
+    private Double ultimoValor(String codigoSerie, LocalDate ate) {
+        return jdbc.query(
+                "SELECT valor FROM indice_macro WHERE codigo_serie = ? AND data <= ? ORDER BY data DESC LIMIT 1",
+                (rs, i) -> rs.getBigDecimal(1),
+                codigoSerie, Date.valueOf(ate))
+                .stream().findFirst()
+                .map(v -> v == null ? null : v.doubleValue())
+                .orElse(null);
+    }
+
+    /**
+     * Os 10 eventos corporativos mais recentes com {@code data_efeito <=
+     * dataPregao}, ordenados por data descendente e simbolo ascendente. O
+     * campo fator usa a representacao legivel do evidencia_json quando
+     * disponivel (ex: "11/10"), senao o valor numerico de fator_acoes.
+     */
+    public List<LinhaEvento> eventos(LocalDate dataPregao) {
+        return jdbc.query("""
+                SELECT simbolo, tipo, data_efeito,
+                       COALESCE(JSON_UNQUOTE(JSON_EXTRACT(evidencia_json, '$.fator')),
+                                CAST(fator_acoes AS CHAR)) AS fator
+                FROM evento_corporativo
+                WHERE data_efeito <= ?
+                ORDER BY data_efeito DESC, simbolo ASC
+                LIMIT 10
+                """,
+                (rs, i) -> new LinhaEvento(
+                        rs.getString("simbolo"),
+                        rs.getString("tipo"),
+                        rs.getDate("data_efeito").toLocalDate(),
+                        rs.getString("fator")),
+                Date.valueOf(dataPregao));
+    }
 }
