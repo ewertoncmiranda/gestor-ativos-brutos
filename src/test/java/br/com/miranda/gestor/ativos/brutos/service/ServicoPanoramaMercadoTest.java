@@ -76,6 +76,7 @@ class ServicoPanoramaMercadoTest {
         repo = mock(RepositorioPanoramaMercado.class);
         servico = new ServicoPanoramaMercado(repo);
         when(repo.ultimoPregao()).thenReturn(Optional.of(PREGAO));
+        when(repo.ultimoPregaoComLiquidez(any())).thenAnswer(i -> Optional.ofNullable(i.getArgument(0)));
         when(repo.pregoesAte(eq(PREGAO), anyInt())).thenReturn(pregoes(PREGAO, 22));
     }
 
@@ -509,4 +510,44 @@ class ServicoPanoramaMercadoTest {
         assertEquals(novo, depois.dataPregao());
         verify(repo, times(3)).ativos(any(), any(), any(), any(), any());
     }
+    @Test void macroDisponivelNaoCongelaUniversoVazio() {
+        when(repo.macro(any(), any())).thenReturn(new LinhaMacro(0.13, null, null, null));
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of(), List.of(ativo("ITUB4", "Bancos", 102)));
+        assertEquals(0, servico.panorama("5d").universo().presenca());
+        assertEquals(1, servico.panorama("5d").universo().presenca());
+        verify(repo, times(2)).ativos(any(), any(), any(), any(), any());
+    }
+
+    @Test void cacheExpiraNoMesmoPregaoSemDormir() {
+        var relogio = mock(java.time.Clock.class);
+        var agora = new java.util.concurrent.atomic.AtomicReference<>(java.time.Instant.parse("2026-10-21T12:00:00Z"));
+        when(relogio.instant()).thenAnswer(i -> agora.get());
+        var s = new ServicoPanoramaMercado(repo, relogio);
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of(ativo("ITUB4", "Bancos", 102)));
+        var primeiro = s.panorama("5d");
+        agora.set(agora.get().plusSeconds(29));
+        assertSame(primeiro, s.panorama("5d"));
+        agora.set(agora.get().plusSeconds(1));
+        assertNotSame(primeiro, s.panorama("5d"));
+        verify(repo, times(2)).ativos(any(), any(), any(), any(), any());
+    }
+
+    @Test void usaPregaoAnteriorDuranteCargaEAvancaQuandoLiquidezTermina() {
+        LocalDate novo = PREGAO.plusDays(1);
+        when(repo.ultimoPregao()).thenReturn(Optional.of(novo));
+        when(repo.ultimoPregaoComLiquidez(novo)).thenReturn(Optional.of(PREGAO), Optional.of(novo));
+        when(repo.pregoesAte(eq(novo), anyInt())).thenReturn(pregoes(novo, 22));
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of(ativo("ITUB4", "Bancos", 102)));
+        assertEquals(PREGAO, servico.panorama("5d").dataPregao());
+        assertEquals(novo, servico.panorama("5d").dataPregao());
+        verify(repo, times(2)).ativos(any(), any(), any(), any(), any());
+    }
+
+    @Test void semLiquidezHistoricaNaoGuardaRespostaVaziaComMacro() {
+        when(repo.ultimoPregaoComLiquidez(any())).thenReturn(Optional.empty());
+        when(repo.macro(any(), any())).thenReturn(new LinhaMacro(0.13, null, null, null));
+        servico.panorama("5d"); servico.panorama("5d");
+        verify(repo, times(2)).ativos(any(), any(), any(), any(), any());
+    }
+
 }
