@@ -4,8 +4,13 @@ import br.com.miranda.gestor.ativos.brutos.exceptions.ExcecaoAplicacao;
 import br.com.miranda.gestor.ativos.brutos.external.dto.PanoramaMercadoDTO;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado;
 import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado.LinhaAtivo;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado.LinhaEvento;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado.LinhaMacro;
+import br.com.miranda.gestor.ativos.brutos.repository.RepositorioPanoramaMercado.LinhaVolumeAnormal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataRetrievalFailureException;
 import org.springframework.http.HttpStatus;
 
 import java.time.LocalDate;
@@ -302,6 +307,152 @@ class ServicoPanoramaMercadoTest {
         assertEquals(HttpStatus.BAD_REQUEST, erro.getStatus());
         assertEquals("5d", ServicoPanoramaMercado.Janela.de(" ").codigo);
         assertEquals("21d", ServicoPanoramaMercado.Janela.de("21D").codigo);
+    }
+
+    // --- MERC-GES-2: volumeAnormal, macro, eventos ----------------------------------------
+
+    private static LinhaVolumeAnormal vol(String simbolo, double volumePregao, double media21) {
+        return new LinhaVolumeAnormal(simbolo, volumePregao, media21);
+    }
+
+    private void mockSegundaOnda(List<LinhaVolumeAnormal> vols, LinhaMacro macro, List<LinhaEvento> eventos) {
+        when(repo.volumeAnormal(any(), any())).thenReturn(vols);
+        when(repo.macro(any(), any())).thenReturn(macro);
+        when(repo.eventos(any())).thenReturn(eventos);
+    }
+
+    @Test
+    void volumeAnormalOrdenadoPorRazaoComDesempate() {
+        // 3 ativos: razoes 3.0, 5.0, 5.0 — desempate pelo volumePregao
+        var linhas = List.of(
+                vol("AAA3", 3_000_000, 1_000_000),  // razao 3.0
+                vol("BBB3", 2_000_000, 400_000),     // razao 5.0, vol menor
+                vol("CCC3", 5_000_000, 1_000_000));  // razao 5.0, vol maior
+        mockSegundaOnda(linhas, new LinhaMacro(0.15, 0.001, 5.20, 0.035), List.of());
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        var p = servico.panorama("5d");
+        var va = p.volumeAnormal();
+        assertEquals(3, va.size());
+        assertEquals("CCC3", va.get(0).simbolo()); // razao 5.0, maior vol
+        assertEquals(5.0, va.get(0).razao(), D);
+        assertEquals(1, va.get(0).posicao());
+        assertEquals("BBB3", va.get(1).simbolo()); // razao 5.0, menor vol
+        assertEquals(2, va.get(1).posicao());
+        assertEquals("AAA3", va.get(2).simbolo()); // razao 3.0
+        assertEquals(3, va.get(2).posicao());
+        assertFalse(p.indisponivel().contains("volumeAnormal"));
+    }
+
+    @Test
+    void volumeAnormalIgnoraMedia21Zero() {
+        var linhas = List.of(
+                vol("SEM3", 1_000_000, 0),        // media21 zero: ignorado
+                vol("COM3", 2_000_000, 500_000)); // razao 4.0
+        mockSegundaOnda(linhas, null, List.of());
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        var p = servico.panorama("5d");
+        assertEquals(1, p.volumeAnormal().size());
+        assertEquals("COM3", p.volumeAnormal().get(0).simbolo());
+    }
+
+    @Test
+    void volumeAnormalCortaEmDez() {
+        var linhas = new ArrayList<LinhaVolumeAnormal>();
+        for (int i = 1; i <= 15; i++) {
+            linhas.add(vol(String.format("S%02d", i), i * 1_000_000.0, 1_000_000.0));
+        }
+        mockSegundaOnda(linhas, null, List.of());
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        var p = servico.panorama("5d");
+        assertEquals(10, p.volumeAnormal().size());
+        assertEquals("S15", p.volumeAnormal().get(0).simbolo()); // maior razao
+    }
+
+    @Test
+    void volumeAnormalFalhaSQLVaiParaIndisponivel() {
+        DataAccessException ex = new DataRetrievalFailureException("simulado");
+        when(repo.volumeAnormal(any(), any())).thenThrow(ex);
+        when(repo.macro(any(), any())).thenReturn(new LinhaMacro(0.15, 0.001, 5.20, 0.035));
+        when(repo.eventos(any())).thenReturn(List.of());
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(
+                List.of(ativo("UP3", "S", 110), ativo("DN3", "S", 90)));
+
+        var p = servico.panorama("5d");
+        assertTrue(p.volumeAnormal().isEmpty());
+        assertTrue(p.indisponivel().contains("volumeAnormal"));
+        // macro e eventos presentes mesmo com falha no volumeAnormal
+        assertNotNull(p.macro().selic());
+    }
+
+    @Test
+    void macroPreenchidoComValoresDoBanco() {
+        var macro = new LinhaMacro(0.15, 0.0025, 5.22, 0.035);
+        mockSegundaOnda(List.of(), macro, List.of());
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        var p = servico.panorama("5d");
+        assertEquals(0.15, p.macro().selic(), D);
+        assertEquals(0.0025, p.macro().cdiPeriodo(), D);
+        assertEquals(5.22, p.macro().dolar(), D);
+        assertEquals(0.035, p.macro().ipca12m(), D);
+        assertFalse(p.indisponivel().contains("macro"));
+    }
+
+    @Test
+    void macroNullDoRepositorioResultaEmMacroVazio() {
+        // macro() retorna null (ex: Mockito default sem stub)
+        mockSegundaOnda(List.of(), null, List.of());
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        var p = servico.panorama("5d");
+        assertNull(p.macro().selic());
+        assertNull(p.macro().dolar());
+        assertTrue(p.indisponivel().contains("macro"));
+    }
+
+    @Test
+    void macroFalhaSQLVaiParaIndisponivel() {
+        when(repo.volumeAnormal(any(), any())).thenReturn(List.of());
+        when(repo.macro(any(), any())).thenThrow(new DataRetrievalFailureException("simulado"));
+        when(repo.eventos(any())).thenReturn(List.of());
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        var p = servico.panorama("5d");
+        assertNull(p.macro().selic());
+        assertTrue(p.indisponivel().contains("macro"));
+    }
+
+    @Test
+    void eventosMapeadosCorretamente() {
+        var dataCom = LocalDate.of(2026, 10, 15);
+        var linhasEv = List.of(
+                new LinhaEvento("ITUB4", "BONIFICACAO", dataCom, "11/10"),
+                new LinhaEvento("BBAS3", "DESDOBRAMENTO", dataCom.minusDays(1), "2.0"));
+        mockSegundaOnda(List.of(), new LinhaMacro(0.15, 0.001, 5.20, 0.035), linhasEv);
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        var p = servico.panorama("5d");
+        assertEquals(2, p.eventos().size());
+        assertEquals("ITUB4", p.eventos().get(0).simbolo());
+        assertEquals("BONIFICACAO", p.eventos().get(0).tipo());
+        assertEquals(dataCom, p.eventos().get(0).data());
+        assertEquals("11/10", p.eventos().get(0).fator());
+        assertFalse(p.indisponivel().contains("eventos"));
+    }
+
+    @Test
+    void eventosFalhaSQLVaiParaIndisponivel() {
+        when(repo.volumeAnormal(any(), any())).thenReturn(List.of());
+        when(repo.macro(any(), any())).thenReturn(new LinhaMacro(0.15, 0.001, 5.20, 0.035));
+        when(repo.eventos(any())).thenThrow(new DataRetrievalFailureException("simulado"));
+        when(repo.ativos(any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        var p = servico.panorama("5d");
+        assertTrue(p.eventos().isEmpty());
+        assertTrue(p.indisponivel().contains("eventos"));
     }
 
     // --- periodo e cache ------------------------------------------------------------------
