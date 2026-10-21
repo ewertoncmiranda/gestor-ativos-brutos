@@ -125,8 +125,25 @@ public class ServicoPregoes {
             BigDecimal volumeFinanceiro = grupo.stream().map(Pregao::volumeFinanceiro).filter(java.util.Objects::nonNull)
                     .reduce(BigDecimal::add).orElse(null);
             String fonte = grupo.stream().map(Pregao::fonte).distinct().count() > 1 ? "MISTA" : primeiro.fonte();
+            // PREMED ponderado pela quantidade; não estimar quando faltar dado de algum dia.
+            BigDecimal precoMedio = primeiro.precoMedio();
+            if (grupo.size() > 1) {
+                boolean completo = grupo.stream().allMatch(p -> p.precoMedio() != null
+                        && p.volume() != null && p.volume() > 0);
+                precoMedio = completo ? grupo.stream()
+                        .map(p -> p.precoMedio().multiply(BigDecimal.valueOf(p.volume())))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)
+                        .divide(grupo.stream().map(p -> BigDecimal.valueOf(p.volume()))
+                                .reduce(BigDecimal.ZERO, BigDecimal::add), 8, RoundingMode.HALF_UP) : null;
+            }
+            // Ofertas são do último pregão; marcas distintas preservam eventos de todo o grupo.
+            String marcas = grupo.stream().map(Pregao::marcaEx)
+                    .filter(m -> m != null && !m.isBlank()).distinct()
+                    .collect(java.util.stream.Collectors.joining(","));
             velas.add(new Vela(primeiro.data(), ultimo.data(), ultimo.codigo(), primeiro.abertura(), maxima, minima,
-                    ultimo.fechamento(), volume, numeroNegocios, volumeFinanceiro, grupo.size(), fonte));
+                    ultimo.fechamento(), volume, numeroNegocios, volumeFinanceiro, grupo.size(), fonte,
+                    precoMedio, ultimo.melhorOfertaCompra(), ultimo.melhorOfertaVenda(),
+                    marcas.isEmpty() ? null : marcas));
         }
         return velas;
     }

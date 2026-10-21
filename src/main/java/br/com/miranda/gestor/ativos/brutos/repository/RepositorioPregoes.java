@@ -26,7 +26,15 @@ public class RepositorioPregoes {
 
     public record Pregao(LocalDate data, String codigo, BigDecimal abertura, BigDecimal maxima,
                          BigDecimal minima, BigDecimal fechamento, Long volume,
-                         Integer numeroNegocios, BigDecimal volumeFinanceiro, String fonte) {
+                         Integer numeroNegocios, BigDecimal volumeFinanceiro, String fonte,
+                         BigDecimal precoMedio, BigDecimal melhorOfertaCompra,
+                         BigDecimal melhorOfertaVenda, String marcaEx) {
+        public Pregao(LocalDate data, String codigo, BigDecimal abertura, BigDecimal maxima,
+                      BigDecimal minima, BigDecimal fechamento, Long volume, Integer numeroNegocios,
+                      BigDecimal volumeFinanceiro, String fonte) {
+            this(data, codigo, abertura, maxima, minima, fechamento, volume, numeroNegocios,
+                    volumeFinanceiro, fonte, null, null, null, null);
+        }
     }
 
     /**
@@ -44,14 +52,17 @@ public class RepositorioPregoes {
 
     public List<Pregao> oficiais(List<String> codigos, LocalDate de, LocalDate ate) {
         return jdbc.query(
-                "SELECT data_pregao, simbolo, abertura, maxima, minima, fechamento, volume, numero_negocios, volume_financeiro "
+                "SELECT data_pregao, simbolo, abertura, maxima, minima, fechamento, volume, numero_negocios, volume_financeiro, "
+                        + "preco_medio, melhor_oferta_compra, melhor_oferta_venda, marca_ex "
                         + "FROM cotacao_b3_diaria WHERE simbolo IN (:codigos) "
                         + "AND data_pregao BETWEEN :de AND :ate ORDER BY data_pregao",
                 new MapSqlParameterSource("codigos", codigos).addValue("de", de).addValue("ate", ate),
                 (rs, i) -> new Pregao(rs.getDate("data_pregao").toLocalDate(), rs.getString("simbolo"),
                         rs.getBigDecimal("abertura"), rs.getBigDecimal("maxima"), rs.getBigDecimal("minima"),
                         rs.getBigDecimal("fechamento"), rs.getObject("volume", Long.class),
-                        rs.getObject("numero_negocios", Integer.class), rs.getBigDecimal("volume_financeiro"), "B3_COTAHIST"));
+                        rs.getObject("numero_negocios", Integer.class), rs.getBigDecimal("volume_financeiro"), "B3_COTAHIST",
+                        rs.getBigDecimal("preco_medio"), rs.getBigDecimal("melhor_oferta_compra"),
+                        rs.getBigDecimal("melhor_oferta_venda"), rs.getString("marca_ex")));
     }
 
     /** Velas da BRAPI depois de {@code depoisDe} (dias que o COTAHIST ainda nao tem). */
